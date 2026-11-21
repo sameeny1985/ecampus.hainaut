@@ -1,0 +1,1 @@
+# CampusConnect applications package
