@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 
 export default function LoginPage() {
@@ -18,7 +18,10 @@ export default function LoginPage() {
       await login(email, password)
       navigate('/')
     } catch (err) {
-      setError(err.response?.data?.detail || 'Identifiants incorrects')
+      const msg = err.response?.data?.detail || 
+                  err.response?.data?.non_field_errors?.[0] || 
+                  'Identifiants incorrects'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -28,7 +31,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary-600">CampusConnect</h1>
+          <h1 className="text-3xl font-bold text-blue-600">CampusConnect</h1>
           <p className="text-gray-600 mt-2">Réseau social de votre établissement</p>
         </div>
 
@@ -48,8 +51,8 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              placeholder="prenom.nom@univ.fr"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="prenom.nom@hainaut.be"
             />
           </div>
 
@@ -62,24 +65,21 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 rounded-lg transition disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition disabled:opacity-50"
           >
             {loading ? 'Connexion...' : 'Se connecter'}
           </button>
         </form>
 
-        <p className="text-center mt-6 text-sm text-gray-600">
-          Pas encore de compte ?{' '}
-          <Link to="/register" className="text-primary-600 font-medium hover:underline">
-            S'inscrire
-          </Link>
+        <p className="text-center mt-6 text-sm text-gray-500">
+          Contactez l'administration de votre établissement pour obtenir un compte.
         </p>
       </div>
     </div>

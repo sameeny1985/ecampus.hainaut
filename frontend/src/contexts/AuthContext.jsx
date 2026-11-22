@@ -9,31 +9,26 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const token = localStorage.getItem('access_token')
-    if (token) {
-      api.get('/auth/me/')
-        .then(res => setUser(res.data))
-        .catch(() => {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-        })
-        .finally(() => setLoading(false))
-    } else {
+    if (!token) {
       setLoading(false)
+      return
     }
+    api.get('/auth/me/')
+      .then(res => setUser(res.data))
+      .catch(() => {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   const login = async (email, password) => {
     const res = await api.post('/auth/login/', { email, password })
     localStorage.setItem('access_token', res.data.access)
-    localStorage.setItem('refresh_token', res.data.refresh)
+    if (res.data.refresh) localStorage.setItem('refresh_token', res.data.refresh)
     const me = await api.get('/auth/me/')
     setUser(me.data)
     return me.data
-  }
-
-  const register = async (data) => {
-    const res = await api.post('/auth/register/', data)
-    return res.data
   }
 
   const logout = () => {
@@ -43,7 +38,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   )
