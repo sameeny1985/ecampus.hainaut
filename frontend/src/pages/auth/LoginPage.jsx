@@ -16,7 +16,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      navigate('/')
+      navigate('/feed')
     } catch (err) {
       const msg = err.response?.data?.detail || 
                   err.response?.data?.non_field_errors?.[0] || 
