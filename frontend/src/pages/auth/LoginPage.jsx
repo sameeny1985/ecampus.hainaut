@@ -75,11 +75,8 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center mt-6 text-sm text-gray-600">
-          Pas encore de compte ?{' '}
-          <Link to="/register" className="text-primary-600 font-medium hover:underline">
-            S'inscrire
-          </Link>
+        <p className="text-center mt-6 text-sm text-gray-500">
+          Contactez l'administration de votre établissement pour obtenir un compte.
         </p>
       </div>
     </div>
