@@ -6,11 +6,11 @@ import MainLayout from './components/layout/MainLayout'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
-  if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Chargement...</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Chargement...</div>
   return user ? children : <Navigate to="/login" replace />
 }
 
-function App() {
+export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
@@ -18,9 +18,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={
             <PrivateRoute>
-              <MainLayout>
-                <FeedPage />
-              </MainLayout>
+              <MainLayout><FeedPage /></MainLayout>
             </PrivateRoute>
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -29,5 +27,3 @@ function App() {
     </AuthProvider>
   )
 }
-
-export default App

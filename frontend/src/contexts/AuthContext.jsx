@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
       return
     }
     api.get('/auth/me/')
-      .then(res => setUser(res.data))
+      .then(r => setUser(r.data))
       .catch(() => {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
