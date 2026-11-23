@@ -5,7 +5,7 @@ from rest_framework import serializers
 from django.utils import timezone
 from .models import Major, Community, Membership, CommunityResource
 from apps.accounts.serializers import UserPublicSerializer
-
+from apps.accounts.models import User
 
 class MajorSerializer(serializers.ModelSerializer):
     courses_count = serializers.SerializerMethodField()
@@ -90,7 +90,13 @@ class CommunityListSerializer(serializers.ModelSerializer):
         if obj.year:
             return dict(Community.YearLevel.choices).get(obj.year, f'{obj.year}e année')
         return None
+    def get_teacher_name(self, obj):
+        mem = obj.memberships.filter(role=Membership.Role.TEACHER, is_active=True).select_related('user').first()
+        return mem.user.full_name if mem else None
 
+    def get_teacher_id(self, obj):
+        mem = obj.memberships.filter(role=Membership.Role.TEACHER, is_active=True).first()
+        return str(mem.user.id) if mem else None
 
 class CommunityDetailSerializer(serializers.ModelSerializer):
     members_count = serializers.SerializerMethodField()
@@ -109,7 +115,7 @@ class CommunityDetailSerializer(serializers.ModelSerializer):
             'major', 'major_detail', 'year', 'year_display',
             'created_by', 'created_by_name', 'is_active',
             'members_count', 'is_member', 'my_role', 'my_status',
-            'resources', 'created_at', 'updated_at'
+            'resources', 'created_at', 'updated_at', 'teacher_name', 'teacher_id'
         ]
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
 
@@ -140,7 +146,13 @@ class CommunityDetailSerializer(serializers.ModelSerializer):
         if obj.year:
             return dict(Community.YearLevel.choices).get(obj.year, f'{obj.year}e année')
         return None
+    def get_teacher_name(self, obj):
+        mem = obj.memberships.filter(role=Membership.Role.TEACHER, is_active=True).select_related('user').first()
+        return mem.user.full_name if mem else None
 
+    def get_teacher_id(self, obj):
+        mem = obj.memberships.filter(role=Membership.Role.TEACHER, is_active=True).first()
+        return str(mem.user.id) if mem else None
 
 class CommunityCreateSerializer(serializers.ModelSerializer):
     """
@@ -149,7 +161,7 @@ class CommunityCreateSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = Community
-        fields = ['name', 'course_code', 'description', 'major', 'year']
+        fields = ['name', 'course_code', 'description', 'major', 'year', 'teacher']
 
     def validate(self, data):
         major = data.get('major')
@@ -174,19 +186,30 @@ class CommunityCreateSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        teacher_id = validated_data.pop('teacher', None)
         user = self.context['request'].user
-        community = Community.objects.create(created_by=user, **validated_data)
-        # Creator becomes teacher or animator
-        role = Membership.Role.TEACHER if getattr(user, 'role', None) == 'teacher' else Membership.Role.ANIMATOR
-        Membership.objects.create(
-            community=community,
-            user=user,
-            role=role,
-            status=Membership.EnrollmentStatus.IN_PROGRESS
-        )
+    community = Community.objects.create(created_by=user, **validated_data)
+    # استاد انتخاب‌شده
+        if teacher_id:
+            try:
+                teacher = User.objects.get(id=teacher_id, role='teacher')
+                Membership.objects.create(
+                    community=community,
+                    user=teacher,
+                    role=Membership.Role.TEACHER,
+    status=Membership.EnrollmentStatus.IN_PROGRESS
+                )
+            except User.DoesNotExist:
+                pass
+    # اگر خود کاربر استاد است و انتخاب نشده
+        elif getattr(user, 'role', None) == 'teacher':
+            Membership.objects.create(
+                community=community,
+                user=user,
+                role=Membership.Role.TEACHER,
+    status=Membership.EnrollmentStatus.IN_PROGRESS
+            )
         return community
-
-
 class GradeUpdateSerializer(serializers.ModelSerializer):
     """استاد / کارمند نمره و وضعیت را به‌روز می‌کند"""
     class Meta:
@@ -207,10 +230,4 @@ class GradeUpdateSerializer(serializers.ModelSerializer):
         instance.graded_at = timezone.now()
         instance.save()
         return instance
-    def get_teacher_name(self, obj):
-        mem = obj.memberships.filter(role=Membership.Role.TEACHER, is_active=True).select_related('user').first()
-        return mem.user.full_name if mem else None
-
-    def get_teacher_id(self, obj):
-        mem = obj.memberships.filter(role=Membership.Role.TEACHER, is_active=True).first()
-        return str(mem.user.id) if mem else None
+    
