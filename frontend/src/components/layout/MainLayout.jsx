@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 
 export default function MainLayout({ children }) {
   const { user, logout } = useAuth()
+  const isStaff = user && ['teacher', 'admin', 'moderator'].includes(user.role)
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
@@ -10,6 +12,12 @@ export default function MainLayout({ children }) {
           <div className="flex items-center gap-6">
             <Link to="/dashboard" className="text-xl font-bold text-blue-600">CampusConnect</Link>
             <Link to="/messages" className="text-sm text-gray-600 hover:text-blue-600">Email</Link>
+            <Link to="/courses" className="text-sm text-gray-600 hover:text-blue-600">Cours & Filières</Link>
+            {isStaff && (
+              <Link to="/courses/create" className="text-sm text-gray-600 hover:text-blue-600">
+                Ajouter un cours
+              </Link>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-600">{user?.first_name} {user?.last_name}</span>
