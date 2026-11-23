@@ -189,11 +189,10 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [(os.getenv('REDIS_HOST', '127.0.0.1'), int(os.getenv('REDIS_PORT', 6379)))],
+            'hosts': [os.getenv('REDIS_URL')],
         },
     },
 }
-
 # If Redis is not available, use in-memory (for development only)
 if os.getenv('USE_INMEMORY_CHANNELS', 'False').lower() in ('true', '1', 'yes'):
     CHANNEL_LAYERS = {
