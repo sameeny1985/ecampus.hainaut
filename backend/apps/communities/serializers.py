@@ -60,7 +60,7 @@ class CommunityListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'course_code', 'description',
             'major', 'major_name', 'major_code', 'year', 'year_display',
-            'members_count', 'is_member', 'my_role', 'my_status', 'created_at'
+            'members_count', 'is_member', 'my_role', 'my_status', 'created_at', 'teacher_name', 'teacher_id'
         ]
 
     def get_members_count(self, obj):
@@ -207,3 +207,10 @@ class GradeUpdateSerializer(serializers.ModelSerializer):
         instance.graded_at = timezone.now()
         instance.save()
         return instance
+    def get_teacher_name(self, obj):
+        mem = obj.memberships.filter(role=Membership.Role.TEACHER, is_active=True).select_related('user').first()
+        return mem.user.full_name if mem else None
+
+    def get_teacher_id(self, obj):
+        mem = obj.memberships.filter(role=Membership.Role.TEACHER, is_active=True).first()
+        return str(mem.user.id) if mem else None
