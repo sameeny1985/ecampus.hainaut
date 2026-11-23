@@ -10,6 +10,8 @@ export const getCourse = (id) => api.get(`/communities/${id}/`)
 
 export const createCourse = (data) => api.post('/communities/', data)
 
+export const updateCourse = (id, data) => api.patch(`/communities/${id}/update/`, data)
+
 export const deleteCourse = (id) => api.delete(`/communities/${id}/delete/`)
 
 export const joinCourse = (id) => api.post(`/communities/${id}/join/`)
