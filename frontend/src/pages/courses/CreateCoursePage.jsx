@@ -18,10 +18,14 @@ export default function CreateCoursePage() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    getMajors().then(res => setMajors(res.data)).catch(() => {})
+    getMajors()
+      .then(res => {
+        const data = res.data
+        setMajors(Array.isArray(data) ? data : (data?.results || []))
+      })
+      .catch(() => setMajors([]))
   }, [])
 
-  // فقط کارمند / استاد
   if (user && !['teacher', 'admin', 'moderator'].includes(user.role)) {
     return (
       <div className="max-w-lg mx-auto mt-20 p-8 text-center bg-amber-50 rounded-2xl">
@@ -49,7 +53,7 @@ export default function CreateCoursePage() {
       navigate(`/courses/${res.data.id}`)
     } catch (err) {
       const data = err.response?.data
-      if (typeof data === 'object') {
+      if (typeof data === 'object' && data !== null) {
         const msgs = Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
         setError(msgs.join(' · ') || 'Erreur')
       } else {
@@ -59,6 +63,8 @@ export default function CreateCoursePage() {
       setLoading(false)
     }
   }
+
+  const majorList = Array.isArray(majors) ? majors : []
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8">
@@ -71,7 +77,6 @@ export default function CreateCoursePage() {
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-        {/* Filière */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1.5">
             Filière <span className="text-red-500">*</span>
@@ -80,16 +85,20 @@ export default function CreateCoursePage() {
             required
             value={form.major}
             onChange={e => setForm(f => ({ ...f, major: e.target.value }))}
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
           >
             <option value="">— Choisir une filière —</option>
-            {majors.map(m => (
+            {majorList.map(m => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
+          {majorList.length === 0 && (
+            <p className="mt-1 text-xs text-amber-600">
+              Aucune filière chargée. Vérifiez que seed_majors اجرا شده.
+            </p>
+          )}
         </div>
 
-        {/* Année */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1.5">
             Année <span className="text-red-500">*</span>
@@ -102,7 +111,7 @@ export default function CreateCoursePage() {
                 onClick={() => setForm(f => ({ ...f, year: String(y) }))}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition ${
                   form.year === String(y)
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
                     : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300'
                 }`}
               >
@@ -112,7 +121,6 @@ export default function CreateCoursePage() {
           </div>
         </div>
 
-        {/* Nom */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1.5">
             Nom du cours <span className="text-red-500">*</span>
@@ -123,35 +131,29 @@ export default function CreateCoursePage() {
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Ex: Algorithmique et structures de données"
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
           />
         </div>
 
-        {/* Code */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            Code du cours
-          </label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Code du cours</label>
           <input
             type="text"
             value={form.course_code}
             onChange={e => setForm(f => ({ ...f, course_code: e.target.value }))}
             placeholder="Ex: INFO-L1-01"
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
           />
         </div>
 
-        {/* Description */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            Description
-          </label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description</label>
           <textarea
             rows={3}
             value={form.description}
             onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            placeholder="Objectifs, contenu, prérequis..."
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition resize-none"
+            placeholder="Objectifs, contenu..."
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
           />
         </div>
 
@@ -164,7 +166,7 @@ export default function CreateCoursePage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 transition shadow-sm"
+          className="w-full py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50"
         >
           {loading ? 'Création...' : 'Créer le cours'}
         </button>
