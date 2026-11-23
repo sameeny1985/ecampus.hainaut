@@ -5,6 +5,8 @@ from rest_framework import generics, views, status, permissions
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Count
+from apps.accounts.models import User
+from apps.accounts.serializers import UserPublicSerializer
 from .models import Major, Community, Membership, CommunityResource
 from .serializers import (
     MajorSerializer,
@@ -14,7 +16,13 @@ from .serializers import (
 )
 from .permissions import IsCommunityMember, IsCommunityAnimatorOrTeacher
 
+class TeachersListView(generics.ListAPIView):
+    """لیست اساتید ثبت‌شده توسط ادمین (فقط نقش teacher)"""
+    serializer_class = UserPublicSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        return User.objects.filter(role='teacher', is_active=True).order_by('last_name', 'first_name')
 class MajorListView(generics.ListAPIView):
     """لیست تمام رشته‌های فعال دانشگاه"""
     serializer_class = MajorSerializer
@@ -72,7 +80,48 @@ class CommunityListCreateView(generics.ListCreateAPIView):
             status=status.HTTP_201_CREATED
         )
 
+class CommunityUpdateView(views.APIView):
+    """ویرایش درس بدون حذف دانشجویان ثبت‌نام‌شده"""
+    permission_classes = [permissions.IsAuthenticated]
 
+    def patch(self, request, id):
+        if request.user.role not in ('teacher', 'admin', 'moderator'):
+            return Response({'error': 'Permission refusée.'}, status=status.HTTP_403_FORBIDDEN)
+        community = get_object_or_404(Community, id=id, is_active=True)
+        # فقط فیلدهای مجاز را به‌روز کن
+        for field in ['name', 'course_code', 'description', 'year', 'major']:
+            if field in request.data:
+                setattr(community, field, request.data[field])
+        community.save()
+        # تغییر استاد (اگر teacher_id فرستاده شده)
+        teacher_id = request.data.get('teacher')
+        if teacher_id:
+            # حذف نقش teacher قبلی (فقط membershipهای teacher)
+            Membership.objects.filter(community=community, role=Membership.Role.TEACHER).update(is_active=False)
+            try:
+                teacher = User.objects.get(id=teacher_id, role='teacher')
+                mem, _ = Membership.objects.get_or_create(
+                    community=community, user=teacher,
+                    defaults={'role': Membership.Role.TEACHER, 'status': Membership.EnrollmentStatus.IN_PROGRESS}
+                )
+                mem.role = Membership.Role.TEACHER
+                mem.is_active = True
+                mem.save()
+            except User.DoesNotExist:
+                pass
+        return Response(CommunityDetailSerializer(community, context={'request': request}).data)
+
+class CommunityDeleteView(views.APIView):
+    """حذف نرم درس (دانشجویان حذف نمی‌شوند، فقط درس غیرفعال می‌شود)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, id):
+        if request.user.role not in ('teacher', 'admin', 'moderator'):
+            return Response({'error': 'Permission refusée.'}, status=status.HTTP_403_FORBIDDEN)
+        community = get_object_or_404(Community, id=id)
+        community.is_active = False
+        community.save()
+        return Response({'message': 'Cours supprimé.'}, status=status.HTTP_200_OK)
 class CommunityDetailView(generics.RetrieveAPIView):
     serializer_class = CommunityDetailSerializer
     queryset = Community.objects.filter(is_active=True).select_related('major', 'created_by')
