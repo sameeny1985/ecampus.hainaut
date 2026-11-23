@@ -6,7 +6,10 @@ import StudentDashboard from './pages/dashboards/StudentDashboard'
 import StaffDashboard from './pages/dashboards/StaffDashboard'
 import MessagingPage from './pages/MessagingPage'
 import MainLayout from './components/layout/MainLayout'
-
+import MajorsPage from './pages/courses/MajorsPage'
+import MajorCoursesPage from './pages/courses/MajorCoursesPage'
+import CreateCoursePage from './pages/courses/CreateCoursePage'
+import CourseDetailPage from './pages/courses/CourseDetailPage'
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="min-h-screen flex items-center justify-center">Chargement...</div>
@@ -27,6 +30,26 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/courses" element={
+            <PrivateRoute>
+              <MainLayout><MajorsPage /></MainLayout>
+            </PrivateRoute>
+          } />
+          <Route path="/courses/major/:majorId" element={
+            <PrivateRoute>
+              <MainLayout><MajorCoursesPage /></MainLayout>
+            </PrivateRoute>
+          } />
+          <Route path="/courses/create" element={
+            <PrivateRoute>
+              <MainLayout><CreateCoursePage /></MainLayout>
+            </PrivateRoute>
+          } />
+         <Route path="/courses/:id" element={
+          <PrivateRoute>
+            <MainLayout><CourseDetailPage /></MainLayout>
+          </PrivateRoute>
+          } />
           <Route path="/dashboard" element={
             <PrivateRoute>
               <MainLayout><DashboardRouter /></MainLayout>
