@@ -4,9 +4,7 @@ from . import views
 urlpatterns = [
     # رشته‌ها
     path('majors/', views.MajorListView.as_view(), name='major-list'),
-    path('teachers/', views.TeachersListView.as_view(), name='teachers-list'),
-    path('<uuid:id>/update/', views.CommunityUpdateView.as_view(), name='community-update'),
-    path('<uuid:id>/delete/', views.CommunityDeleteView.as_view(), name='community-delete'),
+
     # دروس
     path('', views.CommunityListCreateView.as_view(), name='community-list-create'),
     path('<uuid:id>/', views.CommunityDetailView.as_view(), name='community-detail'),
@@ -27,4 +25,5 @@ urlpatterns = [
     # ثبت‌نام‌های یک دانشجو
     path('enrollments/', views.StudentEnrollmentsView.as_view(), name='student-enrollments'),
 ]
+
 
