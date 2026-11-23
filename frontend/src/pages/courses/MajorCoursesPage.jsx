@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getMajors, getCourses, joinCourse } from '../../services/communityService'
+import { getMajors, getCourses, joinCourse, deleteCourse, leaveCourse } from '../../services/communityService'
+import { useAuth } from '../../contexts/AuthContext'
 
 const YEARS = [
   { value: 1, label: '1ère année' },
@@ -9,6 +10,9 @@ const YEARS = [
 ]
 
 export default function MajorCoursesPage() {
+  const { user } = useAuth()
+  const isStaff = user && ['teacher', 'admin', 'moderator'].includes(user.role)
+
   const { majorId } = useParams()
   const [major, setMajor] = useState(null)
   const [year, setYear] = useState(1)
@@ -56,6 +60,30 @@ export default function MajorCoursesPage() {
       })
     } finally {
       setJoining(null)
+    }
+  }
+
+  const handleLeave = async (courseId) => {
+    if (!window.confirm('Voulez-vous vraiment vous désinscrire de ce cours ?')) return
+    try {
+      await leaveCourse(courseId)
+      setMessage({ type: 'success', text: 'Désinscription réussie' })
+      const refreshed = await getCourses({ major: majorId, year })
+      const data = refreshed.data
+      setCourses(Array.isArray(data) ? data : (data?.results || []))
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur' })
+    }
+  }
+
+  const handleDelete = async (courseId) => {
+    if (!window.confirm('Supprimer définitivement ce cours ?')) return
+    try {
+      await deleteCourse(courseId)
+      setCourses(prev => prev.filter(c => c.id !== courseId))
+      setMessage({ type: 'success', text: 'Cours supprimé' })
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Erreur de suppression' })
     }
   }
 
@@ -137,6 +165,13 @@ export default function MajorCoursesPage() {
                 )}
                 <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
                   <span>{course.members_count ?? 0} inscrit(s)</span>
+
+                  {course.teacher_name && (
+                    <span className="text-xs text-indigo-600 font-medium">
+                      Prof: {course.teacher_name}
+                    </span>
+                  )}
+
                   {course.my_status && (
                     <span className="px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600">
                       {course.my_status}
@@ -152,10 +187,31 @@ export default function MajorCoursesPage() {
                 >
                   Voir
                 </Link>
-                {course.is_member ? (
-                  <span className="px-4 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 rounded-xl">
-                    Inscrit
-                  </span>
+
+                {isStaff ? (
+                  <>
+                    <Link
+                      to={`/courses/${course.id}/edit`}
+                      className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100"
+                    >
+                      Modifier
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(course.id)}
+                      className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100"
+                    >
+                      Supprimer
+                    </button>
+                  </>
+                ) : course.is_member ? (
+                  <button
+                    type="button"
+                    onClick={() => handleLeave(course.id)}
+                    className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-xl hover:bg-red-100"
+                  >
+                    Se désinscrire
+                  </button>
                 ) : (
                   <button
                     type="button"
