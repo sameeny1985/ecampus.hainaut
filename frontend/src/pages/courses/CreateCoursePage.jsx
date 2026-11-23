@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { getMajors, createCourse } from '../../services/communityService'
+import { getMajors, getTeachers, createCourse } from '../../services/communityService'
 import { useAuth } from '../../contexts/AuthContext'
 
 export default function CreateCoursePage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [majors, setMajors] = useState([])
+  const [teachers, setTeachers] = useState([])
   const [form, setForm] = useState({
     major: '',
     year: '1',
     name: '',
     course_code: '',
     description: '',
+    teacher: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -24,6 +26,13 @@ export default function CreateCoursePage() {
         setMajors(Array.isArray(data) ? data : (data?.results || []))
       })
       .catch(() => setMajors([]))
+
+    getTeachers()
+      .then(res => {
+        const data = res.data
+        setTeachers(Array.isArray(data) ? data : (data?.results || []))
+      })
+      .catch(() => setTeachers([]))
   }, [])
 
   if (user && !['teacher', 'admin', 'moderator'].includes(user.role)) {
@@ -48,6 +57,7 @@ export default function CreateCoursePage() {
         ...form,
         year: parseInt(form.year, 10),
         major: form.major,
+        teacher: form.teacher || null,
       }
       const res = await createCourse(payload)
       navigate(`/courses/${res.data.id}`)
@@ -65,6 +75,7 @@ export default function CreateCoursePage() {
   }
 
   const majorList = Array.isArray(majors) ? majors : []
+  const teacherList = Array.isArray(teachers) ? teachers : []
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8">
@@ -123,6 +134,30 @@ export default function CreateCoursePage() {
 
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+            Professeur <span className="text-red-500">*</span>
+          </label>
+          <select
+            required
+            value={form.teacher}
+            onChange={e => setForm(f => ({ ...f, teacher: e.target.value }))}
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          >
+            <option value="">— Choisir un enseignant —</option>
+            {teacherList.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.full_name || `${t.first_name || ''} ${t.last_name || ''}`.trim() || t.email}
+              </option>
+            ))}
+          </select>
+          {teacherList.length === 0 && (
+            <p className="mt-1 text-xs text-amber-600">
+              Aucun enseignant trouvé. Vérifiez que des professeurs ont été créés par l'administrateur.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
             Nom du cours <span className="text-red-500">*</span>
           </label>
           <input
@@ -172,5 +207,7 @@ export default function CreateCoursePage() {
         </button>
       </form>
     </div>
+  )
+}
   )
 }
