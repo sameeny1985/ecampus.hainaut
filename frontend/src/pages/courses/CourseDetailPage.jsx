@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getCourse, getCourseMembers, joinCourse, gradeMember } from '../../services/communityService'
+import { getCourse, getCourseMembers, joinCourse, leaveCourse, gradeMember } from '../../services/communityService'
 import { useAuth } from '../../contexts/AuthContext'
 
 const STATUS_OPTIONS = [
@@ -25,7 +25,8 @@ export default function CourseDetailPage() {
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
-  const [editing, setEditing] = useState(null)
+  const [leaving, setLeaving] = useState(false)
+  const [editing, setEditing] = useState(null) // membership id
   const [gradeForm, setGradeForm] = useState({ status: 'in_progress', grade: '', grade_comment: '' })
   const [message, setMessage] = useState(null)
 
@@ -39,30 +40,40 @@ export default function CourseDetailPage() {
         getCourseMembers(id),
       ])
       setCourse(cRes.data)
-      const raw = mRes.data
-      setMembers(Array.isArray(raw) ? raw : (raw?.results || []))
-    } catch (e) {
+      setMembers(mRes.data)
+    } catch {
       setCourse(null)
-      setMembers([])
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    load()
-  }, [id])
+  useEffect(() => { load() }, [id])
 
   const handleJoin = async () => {
     setJoining(true)
     try {
       const res = await joinCourse(id)
-      setMessage({ type: 'success', text: res.data.message || 'Inscription réussie' })
+      setMessage({ type: 'success', text: res.data.message })
       await load()
     } catch (err) {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur' })
     } finally {
       setJoining(false)
+    }
+  }
+
+  const handleLeave = async () => {
+    if (!window.confirm(`Voulez-vous vraiment vous désinscrire du cours « ${course.name} » ?`)) return
+    setLeaving(true)
+    try {
+      const res = await leaveCourse(id)
+      setMessage({ type: 'success', text: res.data.message })
+      await load()
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la désinscription' })
+    } finally {
+      setLeaving(false)
     }
   }
 
@@ -110,9 +121,8 @@ export default function CourseDetailPage() {
     )
   }
 
-  const memberList = Array.isArray(members) ? members : []
-  const students = memberList.filter((m) => m.role === 'member')
-  const teachers = memberList.filter((m) => m.role === 'teacher' || m.role === 'animator')
+  const students = members.filter(m => m.role === 'member')
+  const teachers = members.filter(m => m.role === 'teacher' || m.role === 'animator')
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -149,18 +159,27 @@ export default function CourseDetailPage() {
           )}
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <span className="text-sm text-gray-500">
-              {course.members_count ?? students.length} étudiant(s)
-            </span>
+            <span className="text-sm text-gray-500">{course.members_count} étudiant(s)</span>
             {course.is_member ? (
-              <span className="px-3 py-1 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700">
-                Vous êtes inscrit
-              </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700">
+                  Vous êtes inscrit · {course.my_status === 'passed' ? 'Validé' : course.my_status === 'failed' ? 'Échoué' : course.my_status === 'in_progress' ? 'En cours' : 'Inscrit'}
+                </span>
+                {course.my_role === 'member' && (
+                  <button
+                    onClick={handleLeave}
+                    disabled={leaving}
+                    className="px-4 py-1.5 rounded-xl bg-red-50 text-red-600 text-sm font-semibold hover:bg-red-100 disabled:opacity-50 transition"
+                  >
+                    {leaving ? 'Désinscription...' : 'Se désinscrire du cours'}
+                  </button>
+                )}
+              </div>
             ) : (
               <button
                 onClick={handleJoin}
                 disabled={joining}
-                className="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition"
               >
                 {joining ? 'Inscription...' : "S'inscrire au cours"}
               </button>
@@ -170,38 +189,32 @@ export default function CourseDetailPage() {
       </div>
 
       {message && (
-        <div
-          className={`mt-4 px-4 py-3 rounded-xl text-sm font-medium ${
-            message.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800'
-              : 'bg-red-50 text-red-700'
-          }`}
-        >
+        <div className={`mt-4 px-4 py-3 rounded-xl text-sm font-medium ${
+          message.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'
+        }`}>
           {message.text}
         </div>
       )}
 
+      {/* Teachers */}
       {teachers.length > 0 && (
         <div className="mt-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Enseignants</h2>
           <div className="flex flex-wrap gap-3">
-            {teachers.map((t) => (
+            {teachers.map(t => (
               <div key={t.id} className="px-4 py-2 bg-white rounded-xl border border-gray-100 text-sm">
-                <span className="font-medium">
-                  {t.user_detail?.full_name || t.user_detail?.email}
-                </span>
-                <span className="ml-2 text-gray-400">
-                  {t.role === 'teacher' ? 'Enseignant' : 'Animateur'}
-                </span>
+                <span className="font-medium">{t.user_detail?.full_name || t.user_detail?.email}</span>
+                <span className="ml-2 text-gray-400">{t.role === 'teacher' ? 'Enseignant' : 'Animateur'}</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
+      {/* Students list (staff + own view) */}
       <div className="mt-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-3">
-          Étudiants inscrits ({students.length})
+          Étudiants ({students.length})
         </h2>
 
         {students.length === 0 ? (
@@ -220,8 +233,8 @@ export default function CourseDetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {students.map((m) => (
-                  <tr key={m.id} className="hover:bg-gray-50/50">
+                {students.map(m => (
+                  <tr key={m.id} className={`hover:bg-gray-50/50 ${!m.is_active ? 'opacity-75 bg-amber-50/20' : ''}`}>
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900">
                         {m.user_detail?.full_name || m.user_detail?.email}
@@ -232,22 +245,16 @@ export default function CourseDetailPage() {
                       {editing === m.id ? (
                         <select
                           value={gradeForm.status}
-                          onChange={(e) => setGradeForm((f) => ({ ...f, status: e.target.value }))}
+                          onChange={e => setGradeForm(f => ({ ...f, status: e.target.value }))}
                           className="px-2 py-1 rounded-lg border border-gray-200 text-sm"
                         >
-                          {STATUS_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
+                          {STATUS_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
                         </select>
                       ) : (
-                        <span
-                          className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            STATUS_BADGE[m.status] || STATUS_BADGE.enrolled
-                          }`}
-                        >
-                          {m.status_display || m.status}
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[m.status] || STATUS_BADGE.enrolled}`}>
+                          {m.status_display || (m.status === 'dropped' ? 'Abandonné' : m.status)}
                         </span>
                       )}
                     </td>
@@ -259,7 +266,7 @@ export default function CourseDetailPage() {
                           max="20"
                           step="0.25"
                           value={gradeForm.grade}
-                          onChange={(e) => setGradeForm((f) => ({ ...f, grade: e.target.value }))}
+                          onChange={e => setGradeForm(f => ({ ...f, grade: e.target.value }))}
                           placeholder="/20"
                           className="w-20 px-2 py-1 rounded-lg border border-gray-200 text-sm"
                         />
@@ -271,7 +278,9 @@ export default function CourseDetailPage() {
                     </td>
                     {isStaff && (
                       <td className="px-4 py-3 text-right">
-                        {editing === m.id ? (
+                        {!m.is_active && m.status === 'dropped' ? (
+                          <span className="text-xs text-amber-700 italic">Désinscrit</span>
+                        ) : editing === m.id ? (
                           <div className="flex justify-end gap-2">
                             <button
                               onClick={() => saveGrade(m.user)}
@@ -281,7 +290,7 @@ export default function CourseDetailPage() {
                             </button>
                             <button
                               onClick={() => setEditing(null)}
-                              className="px-3 py-1 text-xs font-medium text-gray-600"
+                              className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-800"
                             >
                               Annuler
                             </button>
