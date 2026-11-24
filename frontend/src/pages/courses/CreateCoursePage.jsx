@@ -19,17 +19,26 @@ export default function CreateCoursePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
+  const extractList = (data) => {
+    if (Array.isArray(data)) return data
+    if (Array.isArray(data?.results)) return data.results
+    return []
+  }
+
   useEffect(() => {
-    getMajors().then(res => setMajors(res.data)).catch(() => {})
+    getMajors()
+      .then(res => setMajors(extractList(res.data)))
+      .catch(() => setMajors([]))
+
     getTeachers()
       .then(res => {
-        const list = res.data.results || res.data || []
+        const list = extractList(res.data)
         setTeachers(list)
         if (user?.role === 'teacher') {
           setForm(f => ({ ...f, teacher: user.id }))
         }
       })
-      .catch(() => {})
+      .catch(() => setTeachers([]))
   }, [user])
 
   // فقط کارمند / استاد
@@ -61,7 +70,7 @@ export default function CreateCoursePage() {
       navigate(`/courses/${res.data.id}`)
     } catch (err) {
       const data = err.response?.data
-      if (typeof data === 'object') {
+      if (typeof data === 'object' && data !== null) {
         const msgs = Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
         setError(msgs.join(' · ') || 'Erreur')
       } else {
@@ -71,6 +80,9 @@ export default function CreateCoursePage() {
       setLoading(false)
     }
   }
+
+  const safeMajors = Array.isArray(majors) ? majors : []
+  const safeTeachers = Array.isArray(teachers) ? teachers : []
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8">
@@ -95,7 +107,7 @@ export default function CreateCoursePage() {
             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
           >
             <option value="">— Choisir une filière —</option>
-            {majors.map(m => (
+            {safeMajors.map(m => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
@@ -136,7 +148,7 @@ export default function CreateCoursePage() {
             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
           >
             <option value="">— Choisir un enseignant —</option>
-            {teachers.map(t => (
+            {safeTeachers.map(t => (
               <option key={t.id} value={t.id}>
                 {t.full_name} ({t.email})
               </option>
