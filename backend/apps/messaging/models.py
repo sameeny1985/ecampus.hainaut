@@ -6,6 +6,7 @@ import uuid
 class Conversation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     participants = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='conversations')
+    trashed_by = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='trashed_conversations', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
