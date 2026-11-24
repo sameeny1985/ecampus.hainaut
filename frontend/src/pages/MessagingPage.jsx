@@ -16,6 +16,7 @@ export default function MessagingPage() {
   const [forwardModalOpen, setForwardModalOpen] = useState(false)
   const [forwardRecipientId, setForwardRecipientId] = useState('')
   const [forwardMessageText, setForwardMessageText] = useState('')
+  const [forwardFileUrl, setForwardFileUrl] = useState('')
   const [forwarding, setForwarding] = useState(false)
   const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -96,31 +97,36 @@ export default function MessagingPage() {
   const openForwardModal = (msgToForward = null) => {
     const targetMsg = msgToForward || messages[messages.length - 1]
     if (!targetMsg) return
-    const textPart = targetMsg.display_content || (targetMsg.content && !targetMsg.content.includes('[FILE]') ? targetMsg.content : '')
+
+    const textPart = targetMsg.display_content || (targetMsg.content && !targetMsg.content.includes('[FILE]') ? targetMsg.content : (targetMsg.content || '').split('[FILE]')[0].trim())
     const filePart = targetMsg.file_url || (targetMsg.content && targetMsg.content.includes('[FILE]') ? targetMsg.content.split('[FILE]')[1]?.trim() : '')
     const senderInfo = targetMsg.sender_detail?.full_name || targetMsg.sender_detail?.email || 'Utilisateur'
 
-    let formatted = `---------- Message transféré ----------\nDe : ${senderInfo}\n`
-    if (textPart) formatted += `${textPart}\n`
-    if (filePart) formatted += `📎 Fichier joint : ${filePart}`
+    let formatted = `---------- Message transféré ----------\nDe : ${senderInfo}`
+    if (textPart) formatted += `\n${textPart}`
 
     setForwardMessageText(formatted.trim())
+    setForwardFileUrl(filePart || '')
     setForwardRecipientId('')
     setForwardModalOpen(true)
   }
 
   const confirmForward = async (e) => {
     e.preventDefault()
-    if (!forwardRecipientId || !forwardMessageText.trim()) return
+    if (!forwardRecipientId || (!forwardMessageText.trim() && !forwardFileUrl)) return
     setForwarding(true)
     try {
       // ۱. باز کردن یا ساختن گفتگو با گیرنده جدید
       const convRes = await api.post('/messaging/conversations/', { recipient_id: forwardRecipientId })
       const targetConv = convRes.data
 
-      // ۲. ارسال پیام فوروارد شده به آن گفتگو
+      // ۲. ترکیب متن و تگ مخفی فایل [FILE] برای نمایش دکمه دانلود بدون نمایش آدرس کلودینری
+      const payloadContent = forwardFileUrl
+        ? `${forwardMessageText.trim()}\n[FILE]${forwardFileUrl}`
+        : forwardMessageText.trim()
+
       const formData = new FormData()
-      formData.append('content', forwardMessageText)
+      formData.append('content', payloadContent)
       await api.post(`/messaging/conversations/${targetConv.id}/messages/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
@@ -132,6 +138,7 @@ export default function MessagingPage() {
       setForwardModalOpen(false)
       setForwardRecipientId('')
       setForwardMessageText('')
+      setForwardFileUrl('')
     } catch (err) {
       alert('Erreur lors du transfert')
     } finally {
@@ -183,7 +190,7 @@ export default function MessagingPage() {
                   <button onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id) }} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
                 </div>
                 <div className="text-xs text-gray-500 truncate">{other?.email}</div>
-                <div className="text-xs text-gray-400 truncate">{conv.last_message?.display_content || conv.last_message?.content || 'Aucun message'}</div>
+                <div className="text-xs text-gray-400 truncate">{conv.last_message?.display_content || (conv.last_message?.content || '').split('[FILE]')[0] || 'Aucun message'}</div>
               </div>
             )
           })}
@@ -308,6 +315,18 @@ export default function MessagingPage() {
                   required
                   className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-50"
                 />
+                {forwardFileUrl && (
+                  <div className="mt-2 flex items-center justify-between bg-blue-50 text-blue-700 text-xs px-3 py-2 rounded-lg">
+                    <span>📎 Fichier joint inclus (sera transféré avec bouton de téléchargement)</span>
+                    <button
+                      type="button"
+                      onClick={() => setForwardFileUrl('')}
+                      className="text-red-500 hover:underline ml-2"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button
