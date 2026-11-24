@@ -2,6 +2,7 @@ from rest_framework import generics, views, permissions, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer, UserMiniSerializer
 from .cloudinary_utils import upload_file
@@ -37,6 +38,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         existing = Conversation.objects.filter(participants=request.user).filter(participants=recipient)
         if existing.exists():
             conv = existing.first()
+            conv.trashed_by.remove(request.user)
         else:
             conv = Conversation.objects.create()
             conv.participants.add(request.user, recipient)
@@ -78,6 +80,8 @@ class MessageListCreateView(generics.ListCreateAPIView):
             msg.content = (content + '\n' if content else '') + f'[FILE]{file_url}'
             msg.save()
 
+        # اگر گفتگو در سطل زباله بود، با ارسال پیام جدید به صندوق اصلی برگردد
+        conv.trashed_by.clear()
         conv.save()
 
         sender_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
@@ -92,3 +96,31 @@ class MessageListCreateView(generics.ListCreateAPIView):
             )
 
         return Response(MessageSerializer(msg, context={'request': request}).data, status=201)
+
+
+class ConversationTrashToggleView(views.APIView):
+    """انتقال گفتگو به سطل زباله یا بازگرداندن آن"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, conversation_id):
+        conv = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+        action = request.data.get('action', 'trash')
+        if action == 'restore':
+            conv.trashed_by.remove(request.user)
+            return Response({'message': 'Conversation restaurée.', 'is_trashed': False})
+        else:
+            conv.trashed_by.add(request.user)
+            return Response({'message': 'Conversation déplacée dans la corbeille.', 'is_trashed': True})
+
+
+class ConversationPermanentDeleteView(views.APIView):
+    """حذف دائمی گفتگو از سطل زباله برای کاربر جاری"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, conversation_id):
+        conv = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+        conv.trashed_by.remove(request.user)
+        conv.participants.remove(request.user)
+        if conv.participants.count() == 0:
+            conv.delete()
+        return Response({'message': 'Conversation supprimée définitivement.'}, status=status.HTTP_200_OK)
