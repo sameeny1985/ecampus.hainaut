@@ -20,10 +20,17 @@ export default function MajorCoursesPage() {
   const [leaving, setLeaving] = useState(null)
   const [message, setMessage] = useState(null)
 
+  const extractList = (data) => {
+    if (Array.isArray(data)) return data
+    if (Array.isArray(data?.results)) return data.results
+    return []
+  }
+
   useEffect(() => {
     getMajors()
       .then(res => {
-        const m = res.data.find(x => x.id === majorId)
+        const list = extractList(res.data)
+        const m = list.find(x => x.id === majorId)
         setMajor(m || null)
       })
       .catch(() => setMajor(null))
@@ -33,7 +40,7 @@ export default function MajorCoursesPage() {
     if (!majorId) return
     setLoading(true)
     getCourses({ major: majorId, year })
-      .then(res => setCourses(res.data))
+      .then(res => setCourses(extractList(res.data)))
       .catch(() => setCourses([]))
       .finally(() => setLoading(false))
   }, [majorId, year])
@@ -45,7 +52,7 @@ export default function MajorCoursesPage() {
       const res = await joinCourse(courseId)
       setMessage({ type: 'success', text: res.data.message })
       const refreshed = await getCourses({ major: majorId, year })
-      setCourses(refreshed.data)
+      setCourses(extractList(refreshed.data))
     } catch (err) {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de l\'inscription' })
     } finally {
@@ -61,13 +68,15 @@ export default function MajorCoursesPage() {
       const res = await leaveCourse(courseId)
       setMessage({ type: 'success', text: res.data.message })
       const refreshed = await getCourses({ major: majorId, year })
-      setCourses(refreshed.data)
+      setCourses(extractList(refreshed.data))
     } catch (err) {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la désinscription' })
     } finally {
       setLeaving(null)
     }
   }
+
+  const safeCourses = Array.isArray(courses) ? courses : []
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -112,13 +121,13 @@ export default function MajorCoursesPage() {
         <div className="flex justify-center py-16">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
         </div>
-      ) : courses.length === 0 ? (
+      ) : safeCourses.length === 0 ? (
         <div className="text-center py-16 bg-gray-50 rounded-2xl text-gray-500">
           Aucun cours disponible pour la {year}e année.
         </div>
       ) : (
         <div className="space-y-4">
-          {courses.map(course => (
+          {safeCourses.map(course => (
             <div
               key={course.id}
               className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
