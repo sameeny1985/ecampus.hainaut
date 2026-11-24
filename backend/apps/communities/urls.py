@@ -2,8 +2,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # رشته‌ها
+    # رشته‌ها و اساتید
     path('majors/', views.MajorListView.as_view(), name='major-list'),
+    path('teachers/', views.TeacherListView.as_view(), name='teacher-list'),
 
     # دروس
     path('', views.CommunityListCreateView.as_view(), name='community-list-create'),
