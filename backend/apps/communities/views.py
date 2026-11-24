@@ -313,9 +313,32 @@ class TeacherListView(generics.ListAPIView):
         data = [
             {
                 'id': str(t.id),
+
                 'full_name': f"{t.first_name} {t.last_name}".strip() or t.email,
                 'email': t.email,
             }
             for t in teachers
         ]
         return Response(data)
+class DeleteCommunityView(views.APIView):
+    """حذف (غیرفعال‌سازی) درس توسط ادمین، مدریتور یا استاد درس"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, community_id):
+        community = get_object_or_404(Community, id=community_id, is_active=True)
+        is_teacher_of_course = Membership.objects.filter(
+            community=community,
+            user=request.user,
+            role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR],
+            is_active=True
+        ).exists()
+
+        if request.user.role not in ('admin', 'moderator') and not is_teacher_of_course and community.created_by != request.user:
+            return Response(
+                {'error': 'Vous n\'avez pas la permission de supprimer ce cours.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        community.is_active = False
+        community.save(update_fields=['is_active'])
+        return Response({'message': f'Le cours « {community.name} » a été supprimé.'}, status=status.HTTP_200_OK)
