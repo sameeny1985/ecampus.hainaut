@@ -3,8 +3,11 @@ Serializers for communities application (E3) + majors + enrollment status.
 """
 from rest_framework import serializers
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 from .models import Major, Community, Membership, CommunityResource
 from apps.accounts.serializers import UserPublicSerializer
+
+User = get_user_model()
 
 
 class MajorSerializer(serializers.ModelSerializer):
@@ -51,6 +54,7 @@ class CommunityListSerializer(serializers.ModelSerializer):
     is_member = serializers.SerializerMethodField()
     my_role = serializers.SerializerMethodField()
     my_status = serializers.SerializerMethodField()
+    teacher_name = serializers.SerializerMethodField()
     major_name = serializers.CharField(source='major.name', read_only=True, default=None)
     major_code = serializers.CharField(source='major.code', read_only=True, default=None)
     year_display = serializers.SerializerMethodField()
@@ -60,8 +64,20 @@ class CommunityListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'course_code', 'description',
             'major', 'major_name', 'major_code', 'year', 'year_display',
-            'members_count', 'is_member', 'my_role', 'my_status', 'created_at'
+            'members_count', 'is_member', 'my_role', 'my_status', 'teacher_name', 'created_at'
         ]
+
+    def get_teacher_name(self, obj):
+        teacher_membership = obj.memberships.filter(
+            is_active=True,
+            role=Membership.Role.TEACHER
+        ).select_related('user').first()
+        if teacher_membership and teacher_membership.user:
+            u = teacher_membership.user
+            return f"{u.first_name} {u.last_name}".strip() or u.email
+        if obj.created_by and getattr(obj.created_by, 'role', None) == 'teacher':
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.email
+        return None
 
     def get_members_count(self, obj):
         return obj.memberships.filter(is_active=True, role=Membership.Role.MEMBER).count()
@@ -97,6 +113,7 @@ class CommunityDetailSerializer(serializers.ModelSerializer):
     is_member = serializers.SerializerMethodField()
     my_role = serializers.SerializerMethodField()
     my_status = serializers.SerializerMethodField()
+    teacher_name = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     resources = CommunityResourceSerializer(many=True, read_only=True)
     major_detail = MajorSerializer(source='major', read_only=True)
@@ -107,11 +124,23 @@ class CommunityDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'course_code', 'description',
             'major', 'major_detail', 'year', 'year_display',
-            'created_by', 'created_by_name', 'is_active',
+            'created_by', 'created_by_name', 'teacher_name', 'is_active',
             'members_count', 'is_member', 'my_role', 'my_status',
             'resources', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+
+    def get_teacher_name(self, obj):
+        teacher_membership = obj.memberships.filter(
+            is_active=True,
+            role=Membership.Role.TEACHER
+        ).select_related('user').first()
+        if teacher_membership and teacher_membership.user:
+            u = teacher_membership.user
+            return f"{u.first_name} {u.last_name}".strip() or u.email
+        if obj.created_by and getattr(obj.created_by, 'role', None) == 'teacher':
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.email
+        return None
 
     def get_members_count(self, obj):
         return obj.memberships.filter(is_active=True, role=Membership.Role.MEMBER).count()
@@ -145,11 +174,13 @@ class CommunityDetailSerializer(serializers.ModelSerializer):
 class CommunityCreateSerializer(serializers.ModelSerializer):
     """
     ایجاد درس توسط کارمند / استاد
-    باید major + year + name را بفرستد
+    باید major + year + name + teacher را بفرستد
     """
+    teacher = serializers.UUIDField(required=False, allow_null=True, write_only=True)
+
     class Meta:
         model = Community
-        fields = ['name', 'course_code', 'description', 'major', 'year']
+        fields = ['name', 'course_code', 'description', 'major', 'year', 'teacher']
 
     def validate(self, data):
         major = data.get('major')
@@ -174,16 +205,36 @@ class CommunityCreateSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        teacher_id = validated_data.pop('teacher', None)
         user = self.context['request'].user
         community = Community.objects.create(created_by=user, **validated_data)
-        # Creator becomes teacher or animator
-        role = Membership.Role.TEACHER if getattr(user, 'role', None) == 'teacher' else Membership.Role.ANIMATOR
-        Membership.objects.create(
-            community=community,
-            user=user,
-            role=role,
-            status=Membership.EnrollmentStatus.IN_PROGRESS
-        )
+
+        selected_teacher = None
+        if teacher_id:
+            selected_teacher = User.objects.filter(id=teacher_id, role='teacher', is_active=True).first()
+
+        if selected_teacher:
+            Membership.objects.create(
+                community=community,
+                user=selected_teacher,
+                role=Membership.Role.TEACHER,
+                status=Membership.EnrollmentStatus.IN_PROGRESS
+            )
+            if selected_teacher != user:
+                Membership.objects.create(
+                    community=community,
+                    user=user,
+                    role=Membership.Role.ANIMATOR,
+                    status=Membership.EnrollmentStatus.IN_PROGRESS
+                )
+        else:
+            role = Membership.Role.TEACHER if getattr(user, 'role', None) == 'teacher' else Membership.Role.ANIMATOR
+            Membership.objects.create(
+                community=community,
+                user=user,
+                role=role,
+                status=Membership.EnrollmentStatus.IN_PROGRESS
+            )
         return community
 
 
