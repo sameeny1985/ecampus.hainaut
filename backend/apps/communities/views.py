@@ -302,3 +302,20 @@ class CommunityResourcesView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         community = get_object_or_404(Community, id=self.kwargs['community_id'])
         serializer.save(community=community, uploaded_by=self.request.user)
+class TeacherListView(generics.ListAPIView):
+    """لیست تمام اساتید فعال برای انتخاب هنگام ایجاد درس"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        teachers = User.objects.filter(role='teacher', is_active=True).order_by('last_name', 'first_name')
+        data = [
+            {
+                'id': str(t.id),
+                'full_name': f"{t.first_name} {t.last_name}".strip() or t.email,
+                'email': t.email,
+            }
+            for t in teachers
+        ]
+        return Response(data)
