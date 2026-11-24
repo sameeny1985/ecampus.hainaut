@@ -9,6 +9,7 @@ urlpatterns = [
     # دروس
     path('', views.CommunityListCreateView.as_view(), name='community-list-create'),
     path('<uuid:id>/', views.CommunityDetailView.as_view(), name='community-detail'),
+    path('<uuid:community_id>/delete/', views.DeleteCommunityView.as_view(), name='community-delete'),
 
     # ثبت‌نام و لغو
     path('<uuid:community_id>/join/', views.JoinCommunityView.as_view(), name='community-join'),
