@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { getCourse, getCourseMembers, joinCourse, leaveCourse, gradeMember } from '../../services/communityService'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { getCourse, getCourseMembers, joinCourse, leaveCourse, gradeMember, deleteCourse } from '../../services/communityService'
 import { useAuth } from '../../contexts/AuthContext'
 
 const STATUS_OPTIONS = [
@@ -20,12 +20,14 @@ const STATUS_BADGE = {
 
 export default function CourseDetailPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [course, setCourse] = useState(null)
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [deletingCourse, setDeletingCourse] = useState(false)
   const [editing, setEditing] = useState(null) // membership id
   const [gradeForm, setGradeForm] = useState({ status: 'in_progress', grade: '', grade_comment: '' })
   const [message, setMessage] = useState(null)
@@ -81,6 +83,18 @@ export default function CourseDetailPage() {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la désinscription' })
     } finally {
       setLeaving(false)
+    }
+  }
+
+  const handleDeleteCourse = async () => {
+    if (!window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement le cours « ${course.name} » ?`)) return
+    setDeletingCourse(true)
+    try {
+      await deleteCourse(id)
+      navigate(course.major ? `/courses/major/${course.major}` : '/courses')
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la suppression du cours' })
+      setDeletingCourse(false)
     }
   }
 
@@ -144,21 +158,32 @@ export default function CourseDetailPage() {
       <div className="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-violet-500" />
         <div className="p-6 sm:p-8">
-          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 mb-2">
-            {course.major_detail && (
-              <span className="font-medium text-indigo-600">{course.major_detail.name}</span>
-            )}
-            {course.year_display && (
-              <>
-                <span>·</span>
-                <span>{course.year_display}</span>
-              </>
-            )}
-            {course.course_code && (
-              <>
-                <span>·</span>
-                <span className="font-mono">{course.course_code}</span>
-              </>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500 mb-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {course.major_detail && (
+                <span className="font-medium text-indigo-600">{course.major_detail.name}</span>
+              )}
+              {course.year_display && (
+                <>
+                  <span>·</span>
+                  <span>{course.year_display}</span>
+                </>
+              )}
+              {course.course_code && (
+                <>
+                  <span>·</span>
+                  <span className="font-mono">{course.course_code}</span>
+                </>
+              )}
+            </div>
+            {isStaff && (
+              <button
+                onClick={handleDeleteCourse}
+                disabled={deletingCourse}
+                className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg disabled:opacity-50 transition"
+              >
+                {deletingCourse ? 'Suppression...' : '🗑️ Supprimer le cours'}
+              </button>
             )}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{course.name}</h1>
