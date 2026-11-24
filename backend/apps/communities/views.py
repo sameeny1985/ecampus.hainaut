@@ -13,6 +13,7 @@ from .serializers import (
     CommunityResourceSerializer, GradeUpdateSerializer
 )
 from .permissions import IsCommunityMember, IsCommunityAnimatorOrTeacher
+from apps.notifications.models import Notification
 
 
 class MajorListView(generics.ListAPIView):
@@ -137,7 +138,38 @@ class LeaveCommunityView(views.APIView):
         membership.is_active = False
         membership.status = Membership.EnrollmentStatus.DROPPED
         membership.save()
-        return Response({'message': f'Vous avez quitté le cours « {community.name} ».'})
+
+        student_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
+        staff_members = Membership.objects.filter(
+            community=community,
+            role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR],
+            is_active=True
+        ).exclude(user=request.user)
+
+        notified_ids = set()
+        for staff in staff_members:
+            notified_ids.add(staff.user_id)
+            Notification.objects.create(
+                recipient=staff.user,
+                sender=request.user,
+                title=f"Désinscription : {community.name}",
+                message=f"L'étudiant {student_name} s'est désinscrit du cours.",
+                link=f"/courses/{community.id}"
+            )
+
+        if community.created_by and community.created_by_id not in notified_ids and community.created_by != request.user:
+            Notification.objects.create(
+                recipient=community.created_by,
+                sender=request.user,
+                title=f"Désinscription : {community.name}",
+                message=f"L'étudiant {student_name} s'est désinscrit du cours.",
+                link=f"/courses/{community.id}"
+            )
+
+        return Response({
+            'message': f'Vous avez quitté le cours « {community.name} ».',
+            'status': membership.status
+        })
 
 
 class CommunityMembersView(generics.ListAPIView):
@@ -147,9 +179,13 @@ class CommunityMembersView(generics.ListAPIView):
 
     def get_queryset(self):
         community = get_object_or_404(Community, id=self.kwargs['community_id'], is_active=True)
-        return Membership.objects.filter(
-            community=community, is_active=True
-        ).select_related('user', 'user__profile', 'community', 'community__major', 'graded_by').order_by('role', 'joined_at')
+        qs = Membership.objects.filter(community=community)
+        if getattr(self.request.user, 'role', None) not in ('teacher', 'admin', 'moderator'):
+            qs = qs.filter(is_active=True)
+        else:
+            qs = qs.filter(Q(is_active=True) | Q(status=Membership.EnrollmentStatus.DROPPED))
+
+        return qs.select_related('user', 'user__profile', 'community', 'community__major', 'graded_by').order_by('role', '-is_active', 'joined_at')
 
 
 class PromoteMemberView(views.APIView):
