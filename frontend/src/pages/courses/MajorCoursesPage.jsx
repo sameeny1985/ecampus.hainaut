@@ -137,7 +137,12 @@ export default function MajorCoursesPage() {
                 {course.description && (
                   <p className="mt-1 text-sm text-gray-500 line-clamp-2">{course.description}</p>
                 )}
-                <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
+                <div className="mt-2 flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                  {course.teacher_name && (
+                    <span className="text-indigo-600 font-medium">
+                      👨‍🏫 Enseignant : {course.teacher_name}
+                    </span>
+                  )}
                   <span>{course.members_count} inscrit(s)</span>
                   {course.my_status && (
                     <span className={`px-2 py-0.5 rounded-full font-medium ${
