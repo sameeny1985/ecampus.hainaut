@@ -37,10 +37,11 @@ class MessageSerializer(serializers.ModelSerializer):
 class ConversationSerializer(serializers.ModelSerializer):
     participants_detail = UserMiniSerializer(source='participants', many=True, read_only=True)
     last_message = serializers.SerializerMethodField()
+    is_trashed = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
-        fields = ['id', 'participants', 'participants_detail', 'last_message', 'created_at', 'updated_at']
+        fields = ['id', 'participants', 'participants_detail', 'last_message', 'is_trashed', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
     def get_last_message(self, obj):
@@ -48,3 +49,9 @@ class ConversationSerializer(serializers.ModelSerializer):
         if msg:
             return MessageSerializer(msg, context=self.context).data
         return None
+
+    def get_is_trashed(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.trashed_by.filter(id=request.user.id).exists()
+        return False
