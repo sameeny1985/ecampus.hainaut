@@ -14,19 +14,34 @@ export default function MessagingPage() {
   const [view, setView] = useState('inbox') // inbox, sent, trash
   const [replyTo, setReplyTo] = useState(null)
   const fileInputRef = useRef(null)
+  const messagesEndRef = useRef(null)
+
+  const fetchConversations = () => {
+    api.get('/messaging/conversations/').then(r => setConversations(r.data.results || r.data || [])).catch(() => {})
+  }
 
   useEffect(() => {
     api.get('/messaging/users/').then(r => setUsers(r.data.results || r.data || [])).catch(() => {})
-    api.get('/messaging/conversations/').then(r => setConversations(r.data.results || r.data || [])).catch(() => {})
+    fetchConversations()
+    const convInterval = setInterval(fetchConversations, 10000)
+    return () => clearInterval(convInterval)
   }, [])
 
   useEffect(() => {
-    if (selectedConv) {
+    if (!selectedConv) return
+    const loadMessages = () => {
       api.get(`/messaging/conversations/${selectedConv.id}/messages/`)
         .then(r => setMessages(r.data.results || r.data || []))
         .catch(() => setMessages([]))
     }
+    loadMessages()
+    const msgInterval = setInterval(loadMessages, 5000)
+    return () => clearInterval(msgInterval)
   }, [selectedConv])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const getOther = (conv) => conv?.participants_detail?.find(p => p.id !== user?.id)
 
@@ -44,10 +59,13 @@ export default function MessagingPage() {
   }
 
   const sendMessage = async (e) => {
-    e.preventDefault()
-    if (!selectedConv || (!content && !file)) return
+    if (e) e.preventDefault()
+    if (!selectedConv || (!content.trim() && !file)) return
     const formData = new FormData()
-    if (content) formData.append('content', content)
+    const finalContent = replyTo
+      ? `↪ En réponse à « ${(replyTo.display_content || replyTo.content || '').slice(0, 50)} » :\n${content}`
+      : content
+    if (finalContent) formData.append('content', finalContent)
     if (file) formData.append('file', file)
     try {
       const res = await api.post(`/messaging/conversations/${selectedConv.id}/messages/`, formData, {
@@ -58,9 +76,24 @@ export default function MessagingPage() {
       setFile(null)
       setReplyTo(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
+      fetchConversations()
     } catch (err) {
       alert('Erreur d\'envoi')
     }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+
+  const handleForwardLast = () => {
+    const lastMsg = messages[messages.length - 1]
+    if (!lastMsg) return
+    const textToForward = lastMsg.display_content || lastMsg.content || ''
+    setContent(`Fwd: ${textToForward}`)
   }
 
   const deleteConversation = async (convId) => {
@@ -72,6 +105,7 @@ export default function MessagingPage() {
 
   const filteredConvs = conversations.filter(conv => {
     if (view === 'trash') return false // placeholder
+    if (view === 'sent') return conv.last_message?.sender === user?.id
     return true
   })
 
@@ -106,7 +140,7 @@ export default function MessagingPage() {
                   <button onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id) }} className="text-gray-400 hover:text-red-500 text-xs">✕</button>
                 </div>
                 <div className="text-xs text-gray-500 truncate">{other?.email}</div>
-                <div className="text-xs text-gray-400 truncate">{conv.last_message?.content || 'Aucun message'}</div>
+                <div className="text-xs text-gray-400 truncate">{conv.last_message?.display_content || conv.last_message?.content || 'Aucun message'}</div>
               </div>
             )
           })}
@@ -124,7 +158,7 @@ export default function MessagingPage() {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setReplyTo(messages[messages.length-1])} className="text-sm text-blue-600 hover:underline">Répondre</button>
-                <button className="text-sm text-blue-600 hover:underline">Transférer</button>
+                <button onClick={handleForwardLast} className="text-sm text-blue-600 hover:underline">Transférer</button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -146,22 +180,29 @@ export default function MessagingPage() {
                         📎 Télécharger le fichier
                       </a>
                     )}
-                    <div className="text-xs opacity-60 mt-1">{new Date(msg.created_at).toLocaleString('fr-FR')}</div>
+                    <div className="text-xs opacity-60 mt-1 flex items-center justify-between gap-2">
+                      <span>{new Date(msg.created_at).toLocaleString('fr-FR')}</span>
+                      {msg.sender === user?.id && (
+                        <span>{msg.is_read ? '✓✓ Lu' : '✓ Envoyé'}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
+              <div ref={messagesEndRef} />
             </div>
             <form onSubmit={sendMessage} className="p-4 border-t">
               {replyTo && (
                 <div className="flex justify-between items-center text-xs text-gray-500 mb-2 bg-gray-50 p-2 rounded">
-                  <span>Réponse à : {replyTo.content?.slice(0,40)}...</span>
+                  <span>Réponse à : {(replyTo.display_content || replyTo.content)?.slice(0,40)}...</span>
                   <button type="button" onClick={() => setReplyTo(null)} className="text-red-500">✕ Annuler</button>
                 </div>
               )}
               <textarea
                 value={content}
                 onChange={e => setContent(e.target.value)}
-                placeholder="Écrire votre message..."
+                onKeyDown={handleKeyDown}
+                placeholder="Écrire votre message... (Entrée pour envoyer, Maj+Entrée pour une ligne)"
                 rows={4}
                 className="w-full border rounded-lg px-3 py-2 mb-2 resize-none"
               />
