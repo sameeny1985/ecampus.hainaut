@@ -32,6 +32,12 @@ export default function CourseDetailPage() {
 
   const isStaff = user && ['teacher', 'admin', 'moderator'].includes(user.role)
 
+  const extractList = (data) => {
+    if (Array.isArray(data)) return data
+    if (Array.isArray(data?.results)) return data.results
+    return []
+  }
+
   const load = async () => {
     setLoading(true)
     try {
@@ -40,9 +46,10 @@ export default function CourseDetailPage() {
         getCourseMembers(id),
       ])
       setCourse(cRes.data)
-      setMembers(mRes.data)
+      setMembers(extractList(mRes.data))
     } catch {
       setCourse(null)
+      setMembers([])
     } finally {
       setLoading(false)
     }
@@ -121,8 +128,9 @@ export default function CourseDetailPage() {
     )
   }
 
-  const students = members.filter(m => m.role === 'member')
-  const teachers = members.filter(m => m.role === 'teacher' || m.role === 'animator')
+  const safeMembers = Array.isArray(members) ? members : []
+  const students = safeMembers.filter(m => m.role === 'member')
+  const teachers = safeMembers.filter(m => m.role === 'teacher' || m.role === 'animator')
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
