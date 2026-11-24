@@ -154,6 +154,11 @@ export default function CourseDetailPage() {
             )}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{course.name}</h1>
+          {course.teacher_name && (
+            <p className="mt-2 text-sm font-medium text-indigo-600">
+              👨‍🏫 Enseignant : {course.teacher_name}
+            </p>
+          )}
           {course.description && (
             <p className="mt-3 text-gray-600 leading-relaxed">{course.description}</p>
           )}
