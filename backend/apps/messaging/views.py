@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer, UserMiniSerializer
 from .cloudinary_utils import upload_file
+from apps.notifications.models import Notification
 
 User = get_user_model()
 
@@ -50,7 +51,9 @@ class MessageListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         conv_id = self.kwargs['conversation_id']
-        return Message.objects.filter(conversation_id=conv_id, conversation__participants=self.request.user)
+        queryset = Message.objects.filter(conversation_id=conv_id, conversation__participants=self.request.user)
+        queryset.exclude(sender=self.request.user).filter(is_read=False).update(is_read=True)
+        return queryset
 
     def create(self, request, *args, **kwargs):
         conv_id = self.kwargs['conversation_id']
@@ -76,4 +79,16 @@ class MessageListCreateView(generics.ListCreateAPIView):
             msg.save()
 
         conv.save()
+
+        sender_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
+        preview = content[:80] if content else "Pièce jointe envoyée"
+        for participant in conv.participants.exclude(id=request.user.id):
+            Notification.objects.create(
+                recipient=participant,
+                sender=request.user,
+                title=f"Nouveau message de {sender_name}",
+                message=preview,
+                link="/messages"
+            )
+
         return Response(MessageSerializer(msg, context={'request': request}).data, status=201)
