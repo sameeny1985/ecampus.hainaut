@@ -13,6 +13,10 @@ export default function MessagingPage() {
   const [recipientId, setRecipientId] = useState('')
   const [view, setView] = useState('inbox') // inbox, sent, trash
   const [replyTo, setReplyTo] = useState(null)
+  const [forwardModalOpen, setForwardModalOpen] = useState(false)
+  const [forwardRecipientId, setForwardRecipientId] = useState('')
+  const [forwardMessageText, setForwardMessageText] = useState('')
+  const [forwarding, setForwarding] = useState(false)
   const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
 
@@ -89,11 +93,50 @@ export default function MessagingPage() {
     }
   }
 
-  const handleForwardLast = () => {
-    const lastMsg = messages[messages.length - 1]
-    if (!lastMsg) return
-    const textToForward = lastMsg.display_content || lastMsg.content || ''
-    setContent(`Fwd: ${textToForward}`)
+  const openForwardModal = (msgToForward = null) => {
+    const targetMsg = msgToForward || messages[messages.length - 1]
+    if (!targetMsg) return
+    const textPart = targetMsg.display_content || (targetMsg.content && !targetMsg.content.includes('[FILE]') ? targetMsg.content : '')
+    const filePart = targetMsg.file_url || (targetMsg.content && targetMsg.content.includes('[FILE]') ? targetMsg.content.split('[FILE]')[1]?.trim() : '')
+    const senderInfo = targetMsg.sender_detail?.full_name || targetMsg.sender_detail?.email || 'Utilisateur'
+
+    let formatted = `---------- Message transféré ----------\nDe : ${senderInfo}\n`
+    if (textPart) formatted += `${textPart}\n`
+    if (filePart) formatted += `📎 Fichier joint : ${filePart}`
+
+    setForwardMessageText(formatted.trim())
+    setForwardRecipientId('')
+    setForwardModalOpen(true)
+  }
+
+  const confirmForward = async (e) => {
+    e.preventDefault()
+    if (!forwardRecipientId || !forwardMessageText.trim()) return
+    setForwarding(true)
+    try {
+      // ۱. باز کردن یا ساختن گفتگو با گیرنده جدید
+      const convRes = await api.post('/messaging/conversations/', { recipient_id: forwardRecipientId })
+      const targetConv = convRes.data
+
+      // ۲. ارسال پیام فوروارد شده به آن گفتگو
+      const formData = new FormData()
+      formData.append('content', forwardMessageText)
+      await api.post(`/messaging/conversations/${targetConv.id}/messages/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+
+      // ۳. بروزرسانی لیست گفتگوها و رفتن به گفتگوی جدید
+      setConversations([targetConv, ...conversations.filter(c => c.id !== targetConv.id)])
+      setSelectedConv(targetConv)
+      setView('inbox')
+      setForwardModalOpen(false)
+      setForwardRecipientId('')
+      setForwardMessageText('')
+    } catch (err) {
+      alert('Erreur lors du transfert')
+    } finally {
+      setForwarding(false)
+    }
   }
 
   const deleteConversation = async (convId) => {
@@ -156,16 +199,26 @@ export default function MessagingPage() {
                 <div className="font-medium">{getOther(selectedConv)?.full_name}</div>
                 <div className="text-xs text-gray-500">{getOther(selectedConv)?.email}</div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => setReplyTo(messages[messages.length-1])} className="text-sm text-blue-600 hover:underline">Répondre</button>
-                <button onClick={handleForwardLast} className="text-sm text-blue-600 hover:underline">Transférer</button>
+              <div className="flex gap-3">
+                <button onClick={() => setReplyTo(messages[messages.length-1])} disabled={messages.length === 0} className="text-sm text-blue-600 hover:underline disabled:opacity-40">Répondre</button>
+                <button onClick={() => openForwardModal()} disabled={messages.length === 0} className="text-sm text-blue-600 hover:underline disabled:opacity-40">Transférer</button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map(msg => (
                 <div key={msg.id} className={`flex ${msg.sender === user?.id ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-md px-4 py-3 rounded-lg ${msg.sender === user?.id ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-                    <div className="text-xs opacity-70 mb-1">{msg.sender_detail?.email}</div>
+                    <div className="flex items-center justify-between gap-4 text-xs opacity-75 mb-1">
+                      <span>{msg.sender_detail?.email}</span>
+                      <button
+                        type="button"
+                        onClick={() => openForwardModal(msg)}
+                        className="hover:underline text-[11px]"
+                        title="Transférer ce message"
+                      >
+                        ↪ Transférer
+                      </button>
+                    </div>
                     {msg.display_content && <p className="whitespace-pre-wrap">{msg.display_content}</p>}
                     {!msg.display_content && msg.content && !msg.content.includes('[FILE]') && (
                       <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -220,6 +273,62 @@ export default function MessagingPage() {
           </div>
         )}
       </div>
+
+      {/* پنجره انتخاب کاربر برای فوروارد (Transférer) */}
+      {forwardModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5">
+            <div className="flex justify-between items-center border-b pb-3 mb-4">
+              <h3 className="font-bold text-gray-800">Transférer le message</h3>
+              <button onClick={() => setForwardModalOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <form onSubmit={confirmForward} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Choisir un destinataire :</label>
+                <select
+                  value={forwardRecipientId}
+                  onChange={e => setForwardRecipientId(e.target.value)}
+                  required
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">-- Sélectionner un utilisateur --</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name || `${u.first_name} ${u.last_name}`} — {u.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Aperçu du message :</label>
+                <textarea
+                  value={forwardMessageText}
+                  onChange={e => setForwardMessageText(e.target.value)}
+                  rows={5}
+                  required
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-50"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setForwardModalOpen(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={!forwardRecipientId || forwarding}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                >
+                  {forwarding ? 'Envoi...' : 'Transférer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
