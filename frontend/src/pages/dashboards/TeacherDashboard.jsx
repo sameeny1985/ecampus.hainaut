@@ -12,6 +12,12 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     const loadTeacherCourses = async () => {
+      if (!user?.id) {
+        setCourses([])
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       try {
         const [allCoursesRes, myEnrollmentsRes] = await Promise.all([
@@ -33,17 +39,18 @@ export default function TeacherDashboard() {
             .map(item => String(item.community))
         )
 
-        const fullName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim().toLowerCase()
-        const email = (user?.email || '').toLowerCase()
+        const currentUserId = String(user.id)
 
-        const teacherCourses = allCourses.filter(c => {
-          if (assignedIds.has(String(c.id))) return true
-          if (c.created_by && String(c.created_by) === String(user?.id)) return true
-          const tName = (c.teacher_name || '').toLowerCase()
-          return (fullName && tName === fullName) || (email && tName.includes(email))
+        const strictTeacherCourses = allCourses.filter(c => {
+          const courseId = String(c.id)
+          if (assignedIds.has(courseId)) return true
+          if (c.created_by && String(c.created_by) === currentUserId) return true
+          if (c.teacher_id && String(c.teacher_id) === currentUserId) return true
+          if (c.teacher && String(c.teacher) === currentUserId) return true
+          return false
         })
 
-        setCourses(teacherCourses)
+        setCourses(strictTeacherCourses)
       } catch {
         setCourses([])
       } finally {
