@@ -56,7 +56,12 @@ export default function StaffDashboard() {
       if (studentsRes.status === 'fulfilled' && Array.isArray(studentsRes.value.data)) {
         setStudents(studentsRes.value.data)
       } else {
-        setStudents([])
+        try {
+          const fallbackStudents = await api.get('/communities/students/')
+          setStudents(Array.isArray(fallbackStudents.data) ? fallbackStudents.data : [])
+        } catch {
+          setStudents([])
+        }
       }
 
       setLoading(false)
