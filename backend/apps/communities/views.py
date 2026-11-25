@@ -470,3 +470,27 @@ class DeleteCommunityView(views.APIView):
         community.is_active = False
         community.save(update_fields=['is_active'])
         return Response({'message': f'Le cours « {community.name} » a été supprimé.'}, status=status.HTTP_200_OK)
+class StudentListView(generics.ListAPIView):
+    """لیست تمام دانشجویان فعال برای پنل کارمند و مدریتور"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        if getattr(request.user, 'role', None) not in ('admin', 'moderator'):
+            return Response(
+                {'error': 'Accès réservé au personnel administratif.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        students = User.objects.filter(is_active=True).exclude(
+            role__in=['teacher', 'admin', 'moderator']
+        ).order_by('last_name', 'first_name')
+
+        data = [
+            {
+                'id': str(s.id),
+                'full_name': f"{s.first_name} {s.last_name}".strip() or s.email,
+                'email': s.email,
+            }
+            for s in students
+        ]
+        return Response(data)
