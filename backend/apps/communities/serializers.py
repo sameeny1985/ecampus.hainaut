@@ -75,8 +75,6 @@ class CommunityListSerializer(serializers.ModelSerializer):
         if teacher_membership and teacher_membership.user:
             u = teacher_membership.user
             return f"{u.first_name} {u.last_name}".strip() or u.email
-        if obj.created_by and getattr(obj.created_by, 'role', None) == 'teacher':
-            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.email
         return None
 
     def get_members_count(self, obj):
@@ -138,8 +136,6 @@ class CommunityDetailSerializer(serializers.ModelSerializer):
         if teacher_membership and teacher_membership.user:
             u = teacher_membership.user
             return f"{u.first_name} {u.last_name}".strip() or u.email
-        if obj.created_by and getattr(obj.created_by, 'role', None) == 'teacher':
-            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip() or obj.created_by.email
         return None
 
     def get_members_count(self, obj):
@@ -173,10 +169,9 @@ class CommunityDetailSerializer(serializers.ModelSerializer):
 
 class CommunityCreateSerializer(serializers.ModelSerializer):
     """
-    ایجاد درس توسط کارمند / استاد
-    باید major + year + name + teacher را بفرستد
+    ایجاد درس منحصراً توسط کارمند آموزشی / ادمین و تخصیص استاد مسئول
     """
-    teacher = serializers.UUIDField(required=False, allow_null=True, write_only=True)
+    teacher = serializers.UUIDField(required=True, write_only=True)
 
     class Meta:
         model = Community
@@ -187,6 +182,7 @@ class CommunityCreateSerializer(serializers.ModelSerializer):
         year = data.get('year')
         name = data.get('name')
         course_code = data.get('course_code', '')
+        teacher_id = data.get('teacher')
 
         if not major:
             raise serializers.ValidationError({'major': 'La filière est obligatoire.'})
@@ -194,8 +190,10 @@ class CommunityCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'year': 'L\'année est obligatoire (1, 2 ou 3).'})
         if year not in [1, 2, 3]:
             raise serializers.ValidationError({'year': 'L\'année doit être 1, 2 ou 3.'})
+        if not teacher_id or not User.objects.filter(id=teacher_id, role='teacher', is_active=True).exists():
+            raise serializers.ValidationError({'teacher': 'Veuillez sélectionner un enseignant valide.'})
 
-        qs = Community.objects.filter(major=major, year=year, name=name)
+        qs = Community.objects.filter(major=major, year=year, name=name, is_active=True)
         if course_code:
             qs = qs.filter(course_code=course_code)
         if qs.exists():
@@ -205,34 +203,23 @@ class CommunityCreateSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        teacher_id = validated_data.pop('teacher', None)
+        teacher_id = validated_data.pop('teacher')
         user = self.context['request'].user
         community = Community.objects.create(created_by=user, **validated_data)
 
-        selected_teacher = None
-        if teacher_id:
-            selected_teacher = User.objects.filter(id=teacher_id, role='teacher', is_active=True).first()
+        selected_teacher = User.objects.get(id=teacher_id, role='teacher', is_active=True)
+        Membership.objects.create(
+            community=community,
+            user=selected_teacher,
+            role=Membership.Role.TEACHER,
+            status=Membership.EnrollmentStatus.IN_PROGRESS
+        )
 
-        if selected_teacher:
-            Membership.objects.create(
-                community=community,
-                user=selected_teacher,
-                role=Membership.Role.TEACHER,
-                status=Membership.EnrollmentStatus.IN_PROGRESS
-            )
-            if selected_teacher != user:
-                Membership.objects.create(
-                    community=community,
-                    user=user,
-                    role=Membership.Role.ANIMATOR,
-                    status=Membership.EnrollmentStatus.IN_PROGRESS
-                )
-        else:
-            role = Membership.Role.TEACHER if getattr(user, 'role', None) == 'teacher' else Membership.Role.ANIMATOR
+        if selected_teacher != user:
             Membership.objects.create(
                 community=community,
                 user=user,
-                role=role,
+                role=Membership.Role.ANIMATOR,
                 status=Membership.EnrollmentStatus.IN_PROGRESS
             )
         return community
