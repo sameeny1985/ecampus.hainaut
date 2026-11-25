@@ -1,6 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { getCourse, getCourseMembers, joinCourse, leaveCourse, gradeMember, deleteCourse } from '../../services/communityService'
+import {
+  getCourse,
+  getCourseMembers,
+  joinCourse,
+  leaveCourse,
+  gradeMember,
+  deleteCourse,
+  uploadResource,
+  deleteResource
+} from '../../services/communityService'
 import { useAuth } from '../../contexts/AuthContext'
 
 const STATUS_OPTIONS = [
@@ -31,6 +40,13 @@ export default function CourseDetailPage() {
   const [editing, setEditing] = useState(null) // membership id
   const [gradeForm, setGradeForm] = useState({ status: 'in_progress', grade: '', grade_comment: '' })
   const [message, setMessage] = useState(null)
+
+  // State برای آپلود جزوه و منابع درسی
+  const [resTitle, setResTitle] = useState('')
+  const [resFile, setResFile] = useState(null)
+  const [resLink, setResLink] = useState('')
+  const [uploadingRes, setUploadingRes] = useState(false)
+  const resFileInputRef = useRef(null)
 
   const isStaff = user && ['teacher', 'admin', 'moderator'].includes(user.role)
 
@@ -98,6 +114,44 @@ export default function CourseDetailPage() {
     }
   }
 
+  const handleUploadResource = async (e) => {
+    e.preventDefault()
+    if (!resTitle.trim() || (!resFile && !resLink.trim())) return
+    setUploadingRes(true)
+    try {
+      const formData = new FormData()
+      formData.append('title', resTitle.trim())
+      if (resFile) formData.append('file', resFile)
+      if (resLink.trim()) formData.append('link', resLink.trim())
+
+      await uploadResource(id, formData)
+      setResTitle('')
+      setResFile(null)
+      setResLink('')
+      if (resFileInputRef.current) resFileInputRef.current.value = ''
+      setMessage({ type: 'success', text: 'Ressource ajoutée et étudiants notifiés.' })
+      await load()
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err.response?.data?.error || 'Erreur lors de l\'ajout de la ressource'
+      })
+    } finally {
+      setUploadingRes(false)
+    }
+  }
+
+  const handleDeleteResource = async (resourceId, title) => {
+    if (!window.confirm(`Supprimer le document « ${title} » ?`)) return
+    try {
+      await deleteResource(id, resourceId)
+      setMessage({ type: 'success', text: 'Document supprimé.' })
+      await load()
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la suppression' })
+    }
+  }
+
   const startEdit = (m) => {
     setEditing(m.id)
     setGradeForm({
@@ -145,6 +199,7 @@ export default function CourseDetailPage() {
   const safeMembers = Array.isArray(members) ? members : []
   const students = safeMembers.filter(m => m.role === 'member')
   const teachers = safeMembers.filter(m => m.role === 'teacher' || m.role === 'animator')
+  const resources = Array.isArray(course.resources) ? course.resources : []
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -248,6 +303,114 @@ export default function CourseDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Supports de cours & Documents */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">
+          📚 Supports de cours & Documents ({resources.length})
+        </h2>
+
+        {isStaff && (
+          <form onSubmit={handleUploadResource} className="mb-4 bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+            <div className="text-sm font-semibold text-gray-800">Ajouter un document ou un lien</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                type="text"
+                value={resTitle}
+                onChange={e => setResTitle(e.target.value)}
+                placeholder="Titre du document (ex: Chapitre 1 - Introduction)"
+                required
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <input
+                type="url"
+                value={resLink}
+                onChange={e => setResLink(e.target.value)}
+                placeholder="Lien externe optionnel (https://...)"
+                disabled={Boolean(resFile)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-400"
+              />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  ref={resFileInputRef}
+                  type="file"
+                  onChange={e => setResFile(e.target.files[0] || null)}
+                  className="text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                />
+                {resFile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResFile(null)
+                      if (resFileInputRef.current) resFileInputRef.current.value = ''
+                    }}
+                    className="text-xs text-red-500 hover:underline"
+                  >
+                    ✕ Retirer
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={uploadingRes || !resTitle.trim() || (!resFile && !resLink.trim())}
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition"
+              >
+                {uploadingRes ? 'Téléversement...' : '📤 Publier le support'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {resources.length === 0 ? (
+          <div className="py-8 text-center text-gray-400 bg-gray-50 rounded-2xl text-sm">
+            Aucun support de cours disponible pour le moment.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {resources.map(res => {
+              const targetUrl = res.link || res.file
+              return (
+                <div
+                  key={res.id}
+                  className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between gap-3 hover:border-indigo-100 transition"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900 text-sm truncate" title={res.title}>
+                      📄 {res.title}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Par {res.uploaded_by_name || 'Enseignant'} · {new Date(res.created_at).toLocaleDateString('fr-FR')}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {targetUrl && (
+                      <a
+                        href={targetUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-semibold hover:bg-indigo-100 transition"
+                      >
+                        📥 Ouvrir
+                      </a>
+                    )}
+                    {isStaff && (
+                      <button
+                        onClick={() => handleDeleteResource(res.id, res.title)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition"
+                        title="Supprimer ce support"
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Students list (staff + own view) */}
       <div className="mt-8">
