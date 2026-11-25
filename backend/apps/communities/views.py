@@ -3,6 +3,7 @@ Views for communities (E3) + majors + structured course registration & grading.
 """
 from rest_framework import generics, views, status, permissions
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Count
 from .models import Major, Community, Membership, CommunityResource
@@ -14,6 +15,7 @@ from .serializers import (
 )
 from .permissions import IsCommunityMember, IsCommunityAnimatorOrTeacher
 from apps.notifications.models import Notification
+from apps.messaging.cloudinary_utils import upload_file
 
 
 class MajorListView(generics.ListAPIView):
@@ -313,32 +315,81 @@ class StudentEnrollmentsView(generics.ListAPIView):
 class CommunityResourcesView(generics.ListCreateAPIView):
     serializer_class = CommunityResourceSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         community = get_object_or_404(Community, id=self.kwargs['community_id'], is_active=True)
         return CommunityResource.objects.filter(community=community)
 
-    def perform_create(self, serializer):
-        community = get_object_or_404(Community, id=self.kwargs['community_id'])
-        resource = serializer.save(community=community, uploaded_by=self.request.user)
+    def create(self, request, *args, **kwargs):
+        if request.user.role not in ('teacher', 'admin', 'moderator'):
+            return Response(
+                {'error': 'Seuls les enseignants et le personnel peuvent ajouter des ressources.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        community = get_object_or_404(Community, id=self.kwargs['community_id'], is_active=True)
+        title = request.data.get('title', '').strip()
+        link = request.data.get('link', '').strip()
+        uploaded_file = request.FILES.get('file')
+
+        if not title:
+            return Response({'error': 'Le titre du document est obligatoire.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not uploaded_file and not link:
+            return Response({'error': 'Veuillez sélectionner un fichier ou fournir un lien.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        final_link = link
+        if uploaded_file:
+            cloud_url = upload_file(uploaded_file, folder='course_resources')
+            if not cloud_url:
+                return Response({'error': 'Échec du téléversement du fichier sur le serveur.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            final_link = cloud_url
+
+        resource = CommunityResource.objects.create(
+            community=community,
+            uploaded_by=request.user,
+            title=title,
+            link=final_link
+        )
 
         # ارسال نوتیفیکیشن به تمام دانشجویان فعال درس هنگام آپلود منبع/جزوه جدید
-        uploader_name = f"{self.request.user.first_name} {self.request.user.last_name}".strip() or self.request.user.email
-        resource_title = getattr(resource, 'title', '') or 'Nouveau document'
+        uploader_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
         students = Membership.objects.filter(
             community=community,
             role=Membership.Role.MEMBER,
             is_active=True
-        ).exclude(user=self.request.user).select_related('user')
+        ).exclude(user=request.user).select_related('user')
 
         for member in students:
             Notification.objects.create(
                 recipient=member.user,
-                sender=self.request.user,
+                sender=request.user,
                 title=f"Nouvelle ressource : {community.name}",
-                message=f"{uploader_name} a ajouté « {resource_title} ».",
+                message=f"{uploader_name} a ajouté « {resource.title} ».",
                 link=f"/courses/{community.id}"
             )
+
+        return Response(
+            CommunityResourceSerializer(resource, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class CommunityResourceDeleteView(views.APIView):
+    """حذف جزوه/منبع از درس توسط استاد یا کارمند"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, community_id, resource_id):
+        if request.user.role not in ('teacher', 'admin', 'moderator'):
+            return Response(
+                {'error': 'Permission refusée.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        community = get_object_or_404(Community, id=community_id, is_active=True)
+        resource = get_object_or_404(CommunityResource, id=resource_id, community=community)
+        resource.delete()
+        return Response({'message': 'Ressource supprimée.'}, status=status.HTTP_200_OK)
 
 
 class TeacherListView(generics.ListAPIView):
