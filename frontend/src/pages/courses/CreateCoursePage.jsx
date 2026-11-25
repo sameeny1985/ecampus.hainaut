@@ -19,6 +19,8 @@ export default function CreateCoursePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
+  const canCreateCourse = user && ['admin', 'moderator'].includes(user.role)
+
   const extractList = (data) => {
     if (Array.isArray(data)) return data
     if (Array.isArray(data?.results)) return data.results
@@ -26,30 +28,25 @@ export default function CreateCoursePage() {
   }
 
   useEffect(() => {
+    if (!canCreateCourse) return
+
     getMajors()
       .then(res => setMajors(extractList(res.data)))
       .catch(() => setMajors([]))
 
     getTeachers()
-      .then(res => {
-        const list = extractList(res.data)
-        setTeachers(list)
-        if (user?.role === 'teacher') {
-          setForm(f => ({ ...f, teacher: user.id }))
-        }
-      })
+      .then(res => setTeachers(extractList(res.data)))
       .catch(() => setTeachers([]))
-  }, [user])
+  }, [canCreateCourse])
 
-  // فقط کارمند / استاد
-  if (user && !['teacher', 'admin', 'moderator'].includes(user.role)) {
+  if (user && !canCreateCourse) {
     return (
       <div className="max-w-lg mx-auto mt-20 p-8 text-center bg-amber-50 rounded-2xl">
         <p className="text-amber-800 font-medium">
-          Seuls les enseignants et le personnel peuvent créer des cours.
+          Seul le personnel administratif peut créer des cours et assigner des enseignants.
         </p>
-        <Link to="/courses" className="mt-4 inline-block text-indigo-600 font-medium">
-          Retour aux filières
+        <Link to="/dashboard" className="mt-4 inline-block text-indigo-600 font-medium">
+          Retour au tableau de bord
         </Link>
       </div>
     )
@@ -64,7 +61,7 @@ export default function CreateCoursePage() {
         ...form,
         year: parseInt(form.year, 10),
         major: form.major,
-        teacher: form.teacher || null,
+        teacher: form.teacher,
       }
       const res = await createCourse(payload)
       navigate(`/courses/${res.data.id}`)
@@ -86,12 +83,12 @@ export default function CreateCoursePage() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8">
-      <Link to="/courses" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+      <Link to="/dashboard" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
         ← Retour
       </Link>
       <h1 className="mt-3 text-3xl font-bold text-gray-900">Nouveau cours</h1>
       <p className="mt-1 text-gray-600">
-        Sélectionnez la filière, l’année, l’enseignant, puis saisissez le nom du cours.
+        Sélectionnez la filière, l’année, l’enseignant responsable, puis saisissez les informations du cours.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
