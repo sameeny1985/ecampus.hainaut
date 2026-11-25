@@ -12,6 +12,7 @@ urlpatterns = [
     path('profile/', views.ProfileUpdateView.as_view(), name='profile-update'),
     path('privacy/', views.PrivacySettingsView.as_view(), name='privacy'),
     path('search/', views.SearchUsersView.as_view(), name='search-users'),
+    path('users/', views.StaffUserListView.as_view(), name='staff-user-list'),
     path('delete-account/', views.DeleteAccountView.as_view(), name='delete-account'),
     path('cookies/', views.CookieConsentView.as_view(), name='cookies'),
     path('block/<uuid:user_id>/', views.BlockUserView.as_view(), name='block-user'),
