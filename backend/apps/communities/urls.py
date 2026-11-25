@@ -5,7 +5,7 @@ urlpatterns = [
     # رشته‌ها و اساتید
     path('majors/', views.MajorListView.as_view(), name='major-list'),
     path('teachers/', views.TeacherListView.as_view(), name='teacher-list'),
-
+    path('students/', views.StudentListView.as_view(), name='student-list'),
     # دروس
     path('', views.CommunityListCreateView.as_view(), name='community-list-create'),
     path('<uuid:id>/', views.CommunityDetailView.as_view(), name='community-detail'),
