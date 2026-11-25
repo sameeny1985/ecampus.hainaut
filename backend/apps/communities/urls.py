@@ -21,8 +21,9 @@ urlpatterns = [
     path('<uuid:community_id>/members/<uuid:user_id>/ban/', views.BanMemberView.as_view(), name='community-ban'),
     path('<uuid:community_id>/members/<uuid:user_id>/grade/', views.GradeMemberView.as_view(), name='community-grade'),
 
-    # منابع
+    # منابع و جزوات درس
     path('<uuid:community_id>/resources/', views.CommunityResourcesView.as_view(), name='community-resources'),
+    path('<uuid:community_id>/resources/<uuid:resource_id>/', views.CommunityResourceDeleteView.as_view(), name='community-resource-delete'),
 
     # ثبت‌نام‌های یک دانشجو
     path('enrollments/', views.StudentEnrollmentsView.as_view(), name='student-enrollments'),
