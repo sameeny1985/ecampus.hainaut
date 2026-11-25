@@ -50,6 +50,17 @@ export default function CourseDetailPage() {
 
   const isStaff = user && ['teacher', 'admin', 'moderator'].includes(user.role)
 
+  const canManageCourse = Boolean(
+    user &&
+      course &&
+      (user.role === 'admin' ||
+        user.role === 'moderator' ||
+        (user.role === 'teacher' &&
+          (course.my_role === 'teacher' ||
+            course.my_role === 'animator' ||
+            String(course.created_by) === String(user.id))))
+  )
+
   const extractList = (data) => {
     if (Array.isArray(data)) return data
     if (Array.isArray(data?.results)) return data.results
@@ -231,7 +242,7 @@ export default function CourseDetailPage() {
                 </>
               )}
             </div>
-            {isStaff && (
+            {canManageCourse && (
               <button
                 onClick={handleDeleteCourse}
                 disabled={deletingCourse}
@@ -316,7 +327,7 @@ export default function CourseDetailPage() {
           📚 Supports de cours & Documents ({resources.length})
         </h2>
 
-        {isStaff && (
+        {canManageCourse && (
           <form onSubmit={handleUploadResource} className="mb-4 bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm space-y-3">
             <div className="text-sm font-semibold text-gray-800">Ajouter un document ou un lien</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -401,7 +412,7 @@ export default function CourseDetailPage() {
                         📥 Ouvrir
                       </a>
                     )}
-                    {isStaff && (
+                    {canManageCourse && (
                       <button
                         onClick={() => handleDeleteResource(res.id, res.title)}
                         className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition"
@@ -418,72 +429,72 @@ export default function CourseDetailPage() {
         )}
       </div>
 
-      {/* Students list (staff + own view) */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">
-          Étudiants ({students.length})
-        </h2>
+      {/* Students list (فقط برای استاد همان درس و کارمند/ادمین) */}
+      {canManageCourse && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">
+            Étudiants ({students.length})
+          </h2>
 
-        {students.length === 0 ? (
-          <div className="py-10 text-center text-gray-400 bg-gray-50 rounded-2xl">
-            Aucun étudiant inscrit pour le moment.
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-left text-gray-500">
-                  <th className="px-4 py-3 font-medium">Étudiant</th>
-                  <th className="px-4 py-3 font-medium">Statut</th>
-                  <th className="px-4 py-3 font-medium">Note</th>
-                  {isStaff && <th className="px-4 py-3 font-medium text-right">Actions</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {students.map(m => (
-                  <tr key={m.id} className={`hover:bg-gray-50/50 ${!m.is_active ? 'opacity-75 bg-amber-50/20' : ''}`}>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">
-                        {m.user_detail?.full_name || m.user_detail?.email}
-                      </div>
-                      <div className="text-xs text-gray-400">{m.user_detail?.email}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {editing === m.id ? (
-                        <select
-                          value={gradeForm.status}
-                          onChange={e => setGradeForm(f => ({ ...f, status: e.target.value }))}
-                          className="px-2 py-1 rounded-lg border border-gray-200 text-sm"
-                        >
-                          {STATUS_OPTIONS.map(o => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[m.status] || STATUS_BADGE.enrolled}`}>
-                          {m.status_display || (m.status === 'dropped' ? 'Abandonné' : m.status)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {editing === m.id ? (
-                        <input
-                          type="number"
-                          min="0"
-                          max="20"
-                          step="0.25"
-                          value={gradeForm.grade}
-                          onChange={e => setGradeForm(f => ({ ...f, grade: e.target.value }))}
-                          placeholder="/20"
-                          className="w-20 px-2 py-1 rounded-lg border border-gray-200 text-sm"
-                        />
-                      ) : (
-                        <span className="font-medium">
-                          {m.grade != null ? `${m.grade}/20` : '—'}
-                        </span>
-                      )}
-                    </td>
-                    {isStaff && (
+          {students.length === 0 ? (
+            <div className="py-10 text-center text-gray-400 bg-gray-50 rounded-2xl">
+              Aucun étudiant inscrit pour le moment.
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-gray-500">
+                    <th className="px-4 py-3 font-medium">Étudiant</th>
+                    <th className="px-4 py-3 font-medium">Statut</th>
+                    <th className="px-4 py-3 font-medium">Note</th>
+                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {students.map(m => (
+                    <tr key={m.id} className={`hover:bg-gray-50/50 ${!m.is_active ? 'opacity-75 bg-amber-50/20' : ''}`}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-900">
+                          {m.user_detail?.full_name || m.user_detail?.email}
+                        </div>
+                        <div className="text-xs text-gray-400">{m.user_detail?.email}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {editing === m.id ? (
+                          <select
+                            value={gradeForm.status}
+                            onChange={e => setGradeForm(f => ({ ...f, status: e.target.value }))}
+                            className="px-2 py-1 rounded-lg border border-gray-200 text-sm"
+                          >
+                            {STATUS_OPTIONS.map(o => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[m.status] || STATUS_BADGE.enrolled}`}>
+                            {m.status_display || (m.status === 'dropped' ? 'Abandonné' : m.status)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {editing === m.id ? (
+                          <input
+                            type="number"
+                            min="0"
+                            max="20"
+                            step="0.25"
+                            value={gradeForm.grade}
+                            onChange={e => setGradeForm(f => ({ ...f, grade: e.target.value }))}
+                            placeholder="/20"
+                            className="w-20 px-2 py-1 rounded-lg border border-gray-200 text-sm"
+                          />
+                        ) : (
+                          <span className="font-medium">
+                            {m.grade != null ? `${m.grade}/20` : '—'}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         {!m.is_active && m.status === 'dropped' ? (
                           <span className="text-xs text-amber-700 italic">Désinscrit</span>
@@ -511,14 +522,14 @@ export default function CourseDetailPage() {
                           </button>
                         )}
                       </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
