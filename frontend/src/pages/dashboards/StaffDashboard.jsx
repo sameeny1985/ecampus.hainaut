@@ -29,22 +29,37 @@ export default function StaffDashboard() {
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true)
-      try {
-        const [coursesRes, teachersRes, studentsRes] = await Promise.all([
-          getCourses(),
-          api.get('/accounts/users/', { params: { role: 'teacher' } }),
-          api.get('/accounts/users/', { params: { role: 'student' } }),
-        ])
-        setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : coursesRes.data?.results || [])
-        setTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : [])
-        setStudents(Array.isArray(studentsRes.data) ? studentsRes.data : [])
-      } catch {
+      const [coursesRes, teachersRes, studentsRes] = await Promise.allSettled([
+        getCourses(),
+        api.get('/accounts/users/', { params: { role: 'teacher' } }),
+        api.get('/accounts/users/', { params: { role: 'student' } }),
+      ])
+
+      if (coursesRes.status === 'fulfilled') {
+        const data = coursesRes.value.data
+        setCourses(Array.isArray(data) ? data : data?.results || [])
+      } else {
         setCourses([])
-        setTeachers([])
-        setStudents([])
-      } finally {
-        setLoading(false)
       }
+
+      if (teachersRes.status === 'fulfilled' && Array.isArray(teachersRes.value.data)) {
+        setTeachers(teachersRes.value.data)
+      } else {
+        try {
+          const fallbackTeachers = await api.get('/communities/teachers/')
+          setTeachers(Array.isArray(fallbackTeachers.data) ? fallbackTeachers.data : [])
+        } catch {
+          setTeachers([])
+        }
+      }
+
+      if (studentsRes.status === 'fulfilled' && Array.isArray(studentsRes.value.data)) {
+        setStudents(studentsRes.value.data)
+      } else {
+        setStudents([])
+      }
+
+      setLoading(false)
     }
     loadAll()
   }, [])
