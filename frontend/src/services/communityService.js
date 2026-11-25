@@ -25,9 +25,12 @@ export const getMyEnrollments = (userId = null) =>
   api.get('/communities/enrollments/', { params: userId ? { user: userId } : {} })
 
 export const uploadResource = (courseId, formData) =>
-  api.post(`/communities/${courseId}/resources/upload/`, formData, {
+  api.post(`/communities/${courseId}/resources/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 
 export const getResources = (courseId) =>
   api.get(`/communities/${courseId}/resources/`)
+
+export const deleteResource = (courseId, resourceId) =>
+  api.delete(`/communities/${courseId}/resources/${resourceId}/`)
