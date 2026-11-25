@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { getMyEnrollments, getCourses } from '../../services/communityService'
+import { getCourses } from '../../services/communityService'
 
 export default function TeacherDashboard() {
   const { user } = useAuth()
@@ -12,20 +12,13 @@ export default function TeacherDashboard() {
     const load = async () => {
       setLoading(true)
       try {
-        const [enrollRes, allCoursesRes] = await Promise.all([
-          getMyEnrollments(),
-          getCourses(),
-        ])
-        const enrollments = Array.isArray(enrollRes.data)
-          ? enrollRes.data
-          : enrollRes.data?.results || []
+        const allCoursesRes = await getCourses()
         const allCourses = Array.isArray(allCoursesRes.data)
           ? allCoursesRes.data
           : allCoursesRes.data?.results || []
 
-        const myCourseIds = new Set(enrollments.map(e => String(e.community)))
         const filtered = allCourses.filter(
-          c => myCourseIds.has(String(c.id)) || c.my_role === 'teacher' || c.my_role === 'animator'
+          c => c.my_role === 'teacher' || c.my_role === 'animator'
         )
         setMyCourses(filtered)
       } catch {
@@ -60,12 +53,6 @@ export default function TeacherDashboard() {
           >
             Toutes les filières
           </Link>
-          <Link
-            to="/courses/create"
-            className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"
-          >
-            + Créer un cours
-          </Link>
         </div>
       </div>
 
@@ -91,15 +78,9 @@ export default function TeacherDashboard() {
           <div className="py-12 text-center text-gray-400 text-sm">Chargement de vos cours...</div>
         ) : myCourses.length === 0 ? (
           <div className="py-12 px-4 text-center">
-            <p className="text-gray-500 text-sm mb-4">
-              Aucun cours ne vous est encore assigné.
+            <p className="text-gray-500 text-sm">
+              Aucun cours ne vous est encore assigné par l&apos;administration.
             </p>
-            <Link
-              to="/courses/create"
-              className="inline-block px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700"
-            >
-              Créer mon premier cours
-            </Link>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
