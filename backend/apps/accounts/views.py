@@ -199,3 +199,32 @@ class BlockedListView(generics.ListAPIView):
 
     def get_queryset(self):
         return BlockedUser.objects.filter(blocker=self.request.user).select_related('blocked')
+class StaffUserListView(views.APIView):
+    """Liste des étudiants et enseignants réservée au personnel (admin / moderator)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if getattr(request.user, 'role', None) not in ('admin', 'moderator'):
+            return Response(
+                {'error': 'Accès réservé au personnel administratif.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        role_filter = request.query_params.get('role')
+        qs = User.objects.filter(is_active=True).order_by('last_name', 'first_name')
+        if role_filter in ('student', 'teacher', 'moderator', 'admin'):
+            qs = qs.filter(role=role_filter)
+
+        data = [
+            {
+                'id': str(u.id),
+                'full_name': f"{u.first_name} {u.last_name}".strip() or u.email,
+                'first_name': u.first_name,
+                'last_name': u.last_name,
+                'email': u.email,
+                'role': u.role,
+                'date_joined': u.date_joined,
+            }
+            for u in qs
+        ]
+        return Response(data)
