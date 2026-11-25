@@ -54,6 +54,11 @@ export default function MainLayout({ children }) {
     setNotifications(notifications.map(n => ({ ...n, is_read: true })))
   }
 
+  const handleLogout = () => {
+    navigate('/', { replace: true })
+    logout()
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
@@ -119,7 +124,7 @@ export default function MainLayout({ children }) {
             </div>
 
             <span className="text-sm text-gray-600">{user?.first_name} {user?.last_name}</span>
-            <button onClick={logout} className="text-sm text-red-600 hover:underline">Déconnexion</button>
+            <button onClick={handleLogout} className="text-sm text-red-600 hover:underline">Déconnexion</button>
           </div>
         </div>
       </header>
