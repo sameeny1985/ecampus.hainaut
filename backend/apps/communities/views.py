@@ -18,6 +18,21 @@ from apps.notifications.models import Notification
 from apps.messaging.cloudinary_utils import upload_file
 
 
+def _can_manage_community(user, community):
+    """بررسی اینکه آیا کاربر کارمند/ادمین است یا استادِ اختصاص‌داده‌شده به همین درس"""
+    role = getattr(user, 'role', None)
+    if role in ('admin', 'moderator'):
+        return True
+    if role == 'teacher':
+        return Membership.objects.filter(
+            community=community,
+            user=user,
+            role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR],
+            is_active=True
+        ).exists()
+    return False
+
+
 class MajorListView(generics.ListAPIView):
     """لیست تمام رشته‌های فعال دانشگاه"""
     serializer_class = MajorSerializer
@@ -29,7 +44,7 @@ class MajorListView(generics.ListAPIView):
 
 class CommunityListCreateView(generics.ListCreateAPIView):
     """
-    لیست دروس + ایجاد درس توسط کارمند/استاد
+    لیست دروس + ایجاد درس منحصراً توسط کارمند آموزشی / ادمین
     فیلتر: ?major=<uuid>&year=1|2|3&q=search
     """
     def get_serializer_class(self):
@@ -62,9 +77,9 @@ class CommunityListCreateView(generics.ListCreateAPIView):
         return [permissions.IsAuthenticated()]
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ('teacher', 'admin', 'moderator'):
+        if getattr(request.user, 'role', None) not in ('admin', 'moderator'):
             return Response(
-                {'error': 'Seuls les enseignants et le personnel peuvent créer un cours.'},
+                {'error': 'Seul le personnel administratif peut créer un cours.'},
                 status=status.HTTP_403_FORBIDDEN
             )
         serializer = self.get_serializer(data=request.data)
@@ -181,30 +196,12 @@ class CommunityMembersView(generics.ListAPIView):
 
     def get_queryset(self):
         community = get_object_or_404(Community, id=self.kwargs['community_id'], is_active=True)
-        user = self.request.user
-        role = getattr(user, 'role', None)
 
-        # کارمند و ادمین دسترسی کامل به اعضای تمام دروس دارند
-        if role in ('admin', 'moderator'):
+        if _can_manage_community(self.request.user, community):
             qs = Membership.objects.filter(community=community).filter(
                 Q(is_active=True) | Q(status=Membership.EnrollmentStatus.DROPPED)
             )
             return qs.select_related('user', 'user__profile', 'community', 'community__major', 'graded_by').order_by('role', '-is_active', 'joined_at')
-
-        # استاد فقط برای دروس خودش لیست دانشجویان را می‌بیند
-        if role == 'teacher':
-            is_course_teacher = Membership.objects.filter(
-                community=community,
-                user=user,
-                role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR],
-                is_active=True
-            ).exists() or community.created_by == user
-
-            if is_course_teacher:
-                qs = Membership.objects.filter(community=community).filter(
-                    Q(is_active=True) | Q(status=Membership.EnrollmentStatus.DROPPED)
-                )
-                return qs.select_related('user', 'user__profile', 'community', 'community__major', 'graded_by').order_by('role', '-is_active', 'joined_at')
 
         # دانشجو (یا استادی که مدرس این درس نیست) فقط اساتید درس را می‌بیند، نه لیست دانشجویان را
         return Membership.objects.filter(
@@ -212,6 +209,8 @@ class CommunityMembersView(generics.ListAPIView):
             is_active=True,
             role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR]
         ).select_related('user', 'user__profile', 'community', 'community__major').order_by('role', 'joined_at')
+
+
 class PromoteMemberView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, IsCommunityAnimatorOrTeacher]
 
@@ -255,19 +254,20 @@ class BanMemberView(views.APIView):
 
 class GradeMemberView(views.APIView):
     """
-    استاد یا کارمند وضعیت و نمره دانشجو را تنظیم می‌کند
+    استاد همان درس یا کارمند وضعیت و نمره دانشجو را تنظیم می‌کند
     POST /api/communities/<id>/members/<user_id>/grade/
     body: { "status": "passed"|"failed"|"in_progress"|"enrolled", "grade": 14.5, "grade_comment": "..." }
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, community_id, user_id):
-        if request.user.role not in ('teacher', 'admin', 'moderator'):
+        community = get_object_or_404(Community, id=community_id)
+        if not _can_manage_community(request.user, community):
             return Response(
-                {'error': 'Seuls les enseignants et le personnel peuvent noter.'},
+                {'error': 'Seuls l\'enseignant de ce cours et le personnel administratif peuvent noter.'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        community = get_object_or_404(Community, id=community_id)
+
         try:
             membership = Membership.objects.get(community=community, user_id=user_id, is_active=True)
         except Membership.DoesNotExist:
@@ -297,7 +297,7 @@ class GradeMemberView(views.APIView):
                 sender=request.user,
                 title=f"Évaluation mise à jour : {community.name}",
                 message=f"Statut : {status_text}{grade_part}",
-                link="/my-courses"
+                link="/dashboard"
             )
 
         return Response(MembershipSerializer(membership, context={'request': request}).data)
@@ -316,7 +316,7 @@ class StudentEnrollmentsView(generics.ListAPIView):
         target_user_id = self.request.query_params.get('user')
 
         if target_user_id:
-            if user.role not in ('teacher', 'admin', 'moderator'):
+            if getattr(user, 'role', None) not in ('admin', 'moderator'):
                 return Membership.objects.none()
             return Membership.objects.filter(
                 user_id=target_user_id,
@@ -344,13 +344,13 @@ class CommunityResourcesView(generics.ListCreateAPIView):
         return CommunityResource.objects.filter(community=community)
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ('teacher', 'admin', 'moderator'):
+        community = get_object_or_404(Community, id=self.kwargs['community_id'], is_active=True)
+        if not _can_manage_community(request.user, community):
             return Response(
-                {'error': 'Seuls les enseignants et le personnel peuvent ajouter des ressources.'},
+                {'error': 'Seuls l\'enseignant de ce cours et le personnel peuvent ajouter des ressources.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        community = get_object_or_404(Community, id=self.kwargs['community_id'], is_active=True)
         title = request.data.get('title', '').strip()
         link = request.data.get('link', '').strip()
         uploaded_file = request.FILES.get('file')
@@ -399,16 +399,16 @@ class CommunityResourcesView(generics.ListCreateAPIView):
 
 
 class CommunityResourceDeleteView(views.APIView):
-    """حذف جزوه/منبع از درس توسط استاد یا کارمند"""
+    """حذف جزوه/منبع از درس توسط استاد همان درس یا کارمند"""
     permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, community_id, resource_id):
-        if request.user.role not in ('teacher', 'admin', 'moderator'):
+        community = get_object_or_404(Community, id=community_id, is_active=True)
+        if not _can_manage_community(request.user, community):
             return Response(
                 {'error': 'Permission refusée.'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        community = get_object_or_404(Community, id=community_id, is_active=True)
         resource = get_object_or_404(CommunityResource, id=resource_id, community=community)
         resource.delete()
         return Response({'message': 'Ressource supprimée.'}, status=status.HTTP_200_OK)
@@ -434,21 +434,15 @@ class TeacherListView(generics.ListAPIView):
 
 
 class DeleteCommunityView(views.APIView):
-    """حذف (غیرفعال‌سازی) درس توسط ادمین، مدریتور یا استاد درس"""
+    """حذف (غیرفعال‌سازی) درس منحصراً توسط ادمین یا کارمند آموزشی"""
     permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, community_id):
         community = get_object_or_404(Community, id=community_id, is_active=True)
-        is_teacher_of_course = Membership.objects.filter(
-            community=community,
-            user=request.user,
-            role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR],
-            is_active=True
-        ).exists()
 
-        if request.user.role not in ('admin', 'moderator') and not is_teacher_of_course and community.created_by != request.user:
+        if getattr(request.user, 'role', None) not in ('admin', 'moderator'):
             return Response(
-                {'error': 'Vous n\'avez pas la permission de supprimer ce cours.'},
+                {'error': 'Seul le personnel administratif peut supprimer un cours.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
