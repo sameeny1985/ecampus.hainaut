@@ -13,14 +13,15 @@ import CreateCoursePage from './pages/courses/CreateCoursePage'
 import CourseDetailPage from './pages/courses/CourseDetailPage'
 
 function PrivateRoute({ children }) {
-  const { user, loading } = useAuth()
+  const { user, loading, isLoggingOut } = useAuth()
   if (loading) return <div className="min-h-screen flex items-center justify-center">Chargement...</div>
-  return user ? children : <Navigate to="/login" replace />
+  if (!user) return <Navigate to={isLoggingOut ? '/' : '/login'} replace />
+  return children
 }
 
 function DashboardRouter() {
-  const { user } = useAuth()
-  if (!user) return <Navigate to="/login" />
+  const { user, isLoggingOut } = useAuth()
+  if (!user) return <Navigate to={isLoggingOut ? '/' : '/login'} replace />
   if (user.role === 'student') return <StudentDashboard />
   if (user.role === 'teacher') return <TeacherDashboard />
   return <StaffDashboard />
