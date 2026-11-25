@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Count
+from django.contrib.auth import get_user_model
 from .models import Major, Community, Membership, CommunityResource
 from .serializers import (
     MajorSerializer,
@@ -16,6 +17,8 @@ from .serializers import (
 from .permissions import IsCommunityMember, IsCommunityAnimatorOrTeacher
 from apps.notifications.models import Notification
 from apps.messaging.cloudinary_utils import upload_file
+
+User = get_user_model()
 
 
 def _can_manage_community(user, community):
@@ -31,6 +34,38 @@ def _can_manage_community(user, community):
             is_active=True
         ).exists()
     return False
+
+
+def _notify_course_staff(community, sender, title, message):
+    """ارسال نوتیفیکیشن به استاد درس + تمام کارمندان آموزشی و ادمین‌ها"""
+    recipients = {}
+
+    # ۱. استادان و انیماتورهای فعال این درس
+    course_staff = Membership.objects.filter(
+        community=community,
+        role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR],
+        is_active=True
+    ).select_related('user')
+    for m in course_staff:
+        if m.user and m.user != sender:
+            recipients[m.user.id] = m.user
+
+    # ۲. تمام کارمندان آموزشی و ادمین‌های فعال سیستم
+    admin_staff = User.objects.filter(
+        role__in=['admin', 'moderator'],
+        is_active=True
+    ).exclude(id=sender.id)
+    for u in admin_staff:
+        recipients[u.id] = u
+
+    for recipient in recipients.values():
+        Notification.objects.create(
+            recipient=recipient,
+            sender=sender,
+            title=title,
+            message=message,
+            link=f"/courses/{community.id}"
+        )
 
 
 class MajorListView(generics.ListAPIView):
@@ -99,7 +134,7 @@ class CommunityDetailView(generics.RetrieveAPIView):
 
 
 class JoinCommunityView(views.APIView):
-    """ثبت‌نام دانشجو در درس"""
+    """ثبت‌نام دانشجو در درس + اطلاع‌رسانی به استاد و کارمندان"""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, community_id):
@@ -121,6 +156,15 @@ class JoinCommunityView(views.APIView):
         membership.status = Membership.EnrollmentStatus.ENROLLED
         membership.role = Membership.Role.MEMBER
         membership.save()
+
+        student_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
+        _notify_course_staff(
+            community=community,
+            sender=request.user,
+            title=f"Nouvelle inscription : {community.name}",
+            message=f"L'étudiant {student_name} s'est inscrit au cours."
+        )
+
         return Response({
             'message': f'Inscription réussie au cours « {community.name} ».',
             'role': membership.role,
@@ -129,6 +173,7 @@ class JoinCommunityView(views.APIView):
 
 
 class LeaveCommunityView(views.APIView):
+    """انصراف دانشجو از درس + اطلاع‌رسانی به استاد و کارمندان"""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, community_id):
@@ -157,31 +202,12 @@ class LeaveCommunityView(views.APIView):
         membership.save()
 
         student_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
-        staff_members = Membership.objects.filter(
+        _notify_course_staff(
             community=community,
-            role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR],
-            is_active=True
-        ).exclude(user=request.user)
-
-        notified_ids = set()
-        for staff in staff_members:
-            notified_ids.add(staff.user_id)
-            Notification.objects.create(
-                recipient=staff.user,
-                sender=request.user,
-                title=f"Désinscription : {community.name}",
-                message=f"L'étudiant {student_name} s'est désinscrit du cours.",
-                link=f"/courses/{community.id}"
-            )
-
-        if community.created_by and community.created_by_id not in notified_ids and community.created_by != request.user:
-            Notification.objects.create(
-                recipient=community.created_by,
-                sender=request.user,
-                title=f"Désinscription : {community.name}",
-                message=f"L'étudiant {student_name} s'est désinscrit du cours.",
-                link=f"/courses/{community.id}"
-            )
+            sender=request.user,
+            title=f"Désinscription : {community.name}",
+            message=f"L'étudiant {student_name} s'est désinscrit du cours."
+        )
 
         return Response({
             'message': f'Vous avez quitté le cours « {community.name} ».',
@@ -203,7 +229,6 @@ class CommunityMembersView(generics.ListAPIView):
             )
             return qs.select_related('user', 'user__profile', 'community', 'community__major', 'graded_by').order_by('role', '-is_active', 'joined_at')
 
-        # دانشجو (یا استادی که مدرس این درس نیست) فقط اساتید درس را می‌بیند، نه لیست دانشجویان را
         return Membership.objects.filter(
             community=community,
             is_active=True,
@@ -282,7 +307,6 @@ class GradeMemberView(views.APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        # ارسال نوتیفیکیشن به دانشجو هنگام ثبت نمره یا تغییر وضعیت درس
         if membership.user != request.user:
             status_labels = {
                 'passed': 'Réussi',
@@ -375,7 +399,6 @@ class CommunityResourcesView(generics.ListCreateAPIView):
             link=final_link
         )
 
-        # ارسال نوتیفیکیشن به تمام دانشجویان فعال درس هنگام آپلود منبع/جزوه جدید
         uploader_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
         students = Membership.objects.filter(
             community=community,
@@ -419,8 +442,6 @@ class TeacherListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request, *args, **kwargs):
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
         teachers = User.objects.filter(role='teacher', is_active=True).order_by('last_name', 'first_name')
         data = [
             {
