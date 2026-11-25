@@ -6,7 +6,7 @@ import api from '../../services/api'
 export default function MainLayout({ children }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const isStaff = user && ['teacher', 'admin', 'moderator'].includes(user.role)
+  const canCreateCourse = user && ['admin', 'moderator'].includes(user.role)
 
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifications, setNotifications] = useState([])
@@ -62,7 +62,7 @@ export default function MainLayout({ children }) {
             <Link to="/dashboard" className="text-xl font-bold text-blue-600">CampusConnect</Link>
             <Link to="/messages" className="text-sm text-gray-600 hover:text-blue-600">Email</Link>
             <Link to="/courses" className="text-sm text-gray-600 hover:text-blue-600">Cours & Filières</Link>
-            {isStaff && (
+            {canCreateCourse && (
               <Link to="/courses/create" className="text-sm text-gray-600 hover:text-blue-600">
                 Ajouter un cours
               </Link>
