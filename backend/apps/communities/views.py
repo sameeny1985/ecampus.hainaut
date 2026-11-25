@@ -257,6 +257,25 @@ class GradeMemberView(views.APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
+        # ارسال نوتیفیکیشن به دانشجو هنگام ثبت نمره یا تغییر وضعیت درس
+        if membership.user != request.user:
+            status_labels = {
+                'passed': 'Réussi',
+                'failed': 'Échoué',
+                'in_progress': 'En cours',
+                'enrolled': 'Inscrit',
+            }
+            status_text = status_labels.get(membership.status, membership.status)
+            grade_part = f" — Note : {membership.grade}/20" if membership.grade is not None else ""
+            Notification.objects.create(
+                recipient=membership.user,
+                sender=request.user,
+                title=f"Évaluation mise à jour : {community.name}",
+                message=f"Statut : {status_text}{grade_part}",
+                link="/my-courses"
+            )
+
         return Response(MembershipSerializer(membership, context={'request': request}).data)
 
 
@@ -301,7 +320,27 @@ class CommunityResourcesView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         community = get_object_or_404(Community, id=self.kwargs['community_id'])
-        serializer.save(community=community, uploaded_by=self.request.user)
+        resource = serializer.save(community=community, uploaded_by=self.request.user)
+
+        # ارسال نوتیفیکیشن به تمام دانشجویان فعال درس هنگام آپلود منبع/جزوه جدید
+        uploader_name = f"{self.request.user.first_name} {self.request.user.last_name}".strip() or self.request.user.email
+        resource_title = getattr(resource, 'title', '') or 'Nouveau document'
+        students = Membership.objects.filter(
+            community=community,
+            role=Membership.Role.MEMBER,
+            is_active=True
+        ).exclude(user=self.request.user).select_related('user')
+
+        for member in students:
+            Notification.objects.create(
+                recipient=member.user,
+                sender=self.request.user,
+                title=f"Nouvelle ressource : {community.name}",
+                message=f"{uploader_name} a ajouté « {resource_title} ».",
+                link=f"/courses/{community.id}"
+            )
+
+
 class TeacherListView(generics.ListAPIView):
     """لیست تمام اساتید فعال برای انتخاب هنگام ایجاد درس"""
     permission_classes = [permissions.IsAuthenticated]
@@ -313,13 +352,14 @@ class TeacherListView(generics.ListAPIView):
         data = [
             {
                 'id': str(t.id),
-
                 'full_name': f"{t.first_name} {t.last_name}".strip() or t.email,
                 'email': t.email,
             }
             for t in teachers
         ]
         return Response(data)
+
+
 class DeleteCommunityView(views.APIView):
     """حذف (غیرفعال‌سازی) درس توسط ادمین، مدریتور یا استاد درس"""
     permission_classes = [permissions.IsAuthenticated]
