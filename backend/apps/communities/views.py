@@ -175,21 +175,43 @@ class LeaveCommunityView(views.APIView):
 
 
 class CommunityMembersView(generics.ListAPIView):
-    """لیست دانشجویان ثبت‌نام‌شده در یک درس (برای استاد/کارمند)"""
+    """لیست دانشجویان ثبت‌نام‌شده در یک درس (فقط برای استاد همان درس و کارمند/ادمین)"""
     serializer_class = MembershipSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         community = get_object_or_404(Community, id=self.kwargs['community_id'], is_active=True)
-        qs = Membership.objects.filter(community=community)
-        if getattr(self.request.user, 'role', None) not in ('teacher', 'admin', 'moderator'):
-            qs = qs.filter(is_active=True)
-        else:
-            qs = qs.filter(Q(is_active=True) | Q(status=Membership.EnrollmentStatus.DROPPED))
+        user = self.request.user
+        role = getattr(user, 'role', None)
 
-        return qs.select_related('user', 'user__profile', 'community', 'community__major', 'graded_by').order_by('role', '-is_active', 'joined_at')
+        # کارمند و ادمین دسترسی کامل به اعضای تمام دروس دارند
+        if role in ('admin', 'moderator'):
+            qs = Membership.objects.filter(community=community).filter(
+                Q(is_active=True) | Q(status=Membership.EnrollmentStatus.DROPPED)
+            )
+            return qs.select_related('user', 'user__profile', 'community', 'community__major', 'graded_by').order_by('role', '-is_active', 'joined_at')
 
+        # استاد فقط برای دروس خودش لیست دانشجویان را می‌بیند
+        if role == 'teacher':
+            is_course_teacher = Membership.objects.filter(
+                community=community,
+                user=user,
+                role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR],
+                is_active=True
+            ).exists() or community.created_by == user
 
+            if is_course_teacher:
+                qs = Membership.objects.filter(community=community).filter(
+                    Q(is_active=True) | Q(status=Membership.EnrollmentStatus.DROPPED)
+                )
+                return qs.select_related('user', 'user__profile', 'community', 'community__major', 'graded_by').order_by('role', '-is_active', 'joined_at')
+
+        # دانشجو (یا استادی که مدرس این درس نیست) فقط اساتید درس را می‌بیند، نه لیست دانشجویان را
+        return Membership.objects.filter(
+            community=community,
+            is_active=True,
+            role__in=[Membership.Role.TEACHER, Membership.Role.ANIMATOR]
+        ).select_related('user', 'user__profile', 'community', 'community__major').order_by('role', 'joined_at')
 class PromoteMemberView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, IsCommunityAnimatorOrTeacher]
 
