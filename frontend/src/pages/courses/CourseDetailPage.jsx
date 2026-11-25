@@ -253,7 +253,13 @@ export default function CourseDetailPage() {
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <span className="text-sm text-gray-500">{course.members_count} étudiant(s)</span>
-            {course.is_member ? (
+            {isStaff || course.my_role === 'teacher' || course.my_role === 'animator' ? (
+              <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-indigo-50 text-indigo-700">
+                {course.my_role === 'teacher'
+                  ? '👨‍🏫 Vous êtes l\'enseignant de ce cours'
+                  : '🛡️ Espace gestion / personnel'}
+              </span>
+            ) : course.is_member ? (
               <div className="flex flex-wrap items-center gap-3">
                 <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700">
                   Vous êtes inscrit · {course.my_status === 'passed' ? 'Validé' : course.my_status === 'failed' ? 'Échoué' : course.my_status === 'in_progress' ? 'En cours' : 'Inscrit'}
