@@ -1,12 +1,28 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import api from '../services/api'
+
+const isUpperYearValue = (val) => {
+  const normalized = String(val || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, '')
+  return ['2eme', '3eme', '2e', '3e', '2', '3', '2em', '3em', '2ieme', '3ieme'].includes(normalized)
+}
 
 export default function ModeratorRequestsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = searchParams.get('tab') === 'first' ? 'first' : 'upper'
-  const [activeTab, setActiveTab] = useState(initialTab) // 'upper' | 'first'
+  const location = useLocation()
 
+  const getDesiredTab = () => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam === 'first') return 'first'
+    if (tabParam === 'upper') return 'upper'
+    if (location.hash.includes('upper')) return 'upper'
+    return 'upper'
+  }
+
+  const [activeTab, setActiveTab] = useState(getDesiredTab)
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [submittingId, setSubmittingId] = useState(null)
@@ -15,39 +31,48 @@ export default function ModeratorRequestsPage() {
   const [formsById, setFormsById] = useState({})
 
   useEffect(() => {
-    const tabParam = searchParams.get('tab')
-    if (tabParam === 'first' || tabParam === 'upper') {
-      setActiveTab(tabParam)
-    }
-  }, [searchParams])
+    setActiveTab(getDesiredTab())
+  }, [searchParams, location.search, location.hash])
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
     setSearchParams({ tab })
   }
 
-  const loadRequests = () => {
+  const loadRequests = async () => {
     setLoading(true)
-    api.get('/auth/registration-requests/')
-      .then((res) => {
-        const list = Array.isArray(res.data) ? res.data : (res.data?.results || [])
-        setRequests(list)
-        const initialForms = {}
-        list.forEach((r) => {
-          const slug = `${(r.first_name || 'etu').toLowerCase()}.${(r.last_name || 'user').toLowerCase()}`
-            .replace(/[^a-z0-9._-]/g, '')
-          initialForms[r.id] = {
-            assigned_institutional_email: r.assigned_institutional_email || `${slug}@hainaut-ea.be`,
-            assigned_temporary_password: r.assigned_temporary_password || 'Campus2026!',
-            moderator_note: r.moderator_note || '',
-          }
-        })
-        setFormsById(initialForms)
+    setErrorMsg('')
+    try {
+      const res = await api.get('/auth/registration-requests/')
+      const raw = res?.data
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.results)
+        ? raw.results
+        : Array.isArray(raw?.requests)
+        ? raw.requests
+        : []
+
+      setRequests(list)
+
+      const initialForms = {}
+      list.forEach((r) => {
+        if (!r || r.id === undefined) return
+        const slug = `${(r.first_name || 'etu').toLowerCase()}.${(r.last_name || 'user').toLowerCase()}`
+          .replace(/[^a-z0-9._-]/g, '')
+        initialForms[r.id] = {
+          assigned_institutional_email: r.assigned_institutional_email || `${slug}@hainaut-ea.be`,
+          assigned_temporary_password: r.assigned_temporary_password || 'Campus2026!',
+          moderator_note: r.moderator_note || '',
+        }
       })
-      .catch((err) => {
-        setErrorMsg(err?.response?.data?.error || 'Erreur lors du chargement des demandes.')
-      })
-      .finally(() => setLoading(false))
+      setFormsById(initialForms)
+    } catch (err) {
+      setRequests([])
+      setErrorMsg(err?.response?.data?.error || 'Erreur lors du chargement des demandes.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -69,7 +94,7 @@ export default function ModeratorRequestsPage() {
     setSuccessMsg('')
     setSubmittingId(reqItem.id)
 
-    const isUpperYear = ['2eme', '3eme'].includes(reqItem.academic_year)
+    const isUpperYear = isUpperYearValue(reqItem.academic_year)
     const currentForm = formsById[reqItem.id] || {}
 
     const payload = isUpperYear
@@ -87,7 +112,7 @@ export default function ModeratorRequestsPage() {
     try {
       const res = await api.post(`/auth/registration-requests/${reqItem.id}/decision/`, payload)
       setSuccessMsg(res.data?.message || 'Décision enregistrée.')
-      loadRequests()
+      await loadRequests()
     } catch (err) {
       setErrorMsg(err?.response?.data?.error || 'Erreur lors de la mise à jour de la demande.')
     } finally {
@@ -95,21 +120,22 @@ export default function ModeratorRequestsPage() {
     }
   }
 
-  const upperYearRequests = requests.filter((r) => ['2eme', '3eme'].includes(r.academic_year))
-  const firstYearRequests = requests.filter((r) => !['2eme', '3eme'].includes(r.academic_year))
+  const safeList = Array.isArray(requests) ? requests : []
+  const upperYearRequests = safeList.filter((r) => isUpperYearValue(r?.academic_year))
+  const firstYearRequests = safeList.filter((r) => !isUpperYearValue(r?.academic_year))
   const visibleRequests = activeTab === 'upper' ? upperYearRequests : firstYearRequests
 
   const renderRequestCard = (r) => {
     const f = formsById[r.id] || {}
-    const isUpperYear = ['2eme', '3eme'].includes(r.academic_year)
+    const isUpperYear = isUpperYearValue(r.academic_year)
     const isBusy = submittingId === r.id
 
-    const yearLabel =
-      r.academic_year === '2eme'
-        ? '2e année'
-        : r.academic_year === '3eme'
-        ? '3e année'
-        : '1re année'
+    const normYear = String(r.academic_year || '').toLowerCase()
+    const yearLabel = normYear.includes('3')
+      ? '3e année'
+      : normYear.includes('2')
+      ? '2e année'
+      : '1re année'
 
     const statusBadgeClass =
       r.status === 'approved'
@@ -131,15 +157,15 @@ export default function ModeratorRequestsPage() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-bold text-gray-900">
-                {r.first_name} {r.last_name}
+                {r.first_name || ''} {r.last_name || ''}
               </span>
-              <span className="text-blue-700 font-semibold">— {r.bachelor}</span>
+              {r.bachelor && <span className="text-blue-700 font-semibold">— {r.bachelor}</span>}
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700">
                 {yearLabel}
               </span>
             </div>
             <div className="text-xs text-gray-600 mt-1">
-              E-mail étudiant : <strong>{r.personal_email}</strong>
+              E-mail étudiant : <strong>{r.personal_email || '—'}</strong>
             </div>
           </div>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClass}`}>
@@ -156,7 +182,7 @@ export default function ModeratorRequestsPage() {
               type="text"
               value={f.moderator_note || ''}
               onChange={(e) => updateField(r.id, 'moderator_note', e.target.value)}
-              placeholder={`Ex. : Validation ${yearLabel} — ${r.bachelor}`}
+              placeholder={`Ex. : Validation ${yearLabel}`}
               className="w-full px-3 py-2 text-sm border rounded-lg"
             />
           </div>
@@ -214,11 +240,7 @@ export default function ModeratorRequestsPage() {
             onClick={() => handleDecision(r, 'approve')}
             className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 text-xs sm:text-sm font-semibold"
           >
-            {isBusy
-              ? 'Traitement...'
-              : isUpperYear
-              ? 'Approuver'
-              : 'Approuver et envoyer identifiants'}
+            {isBusy ? 'Traitement...' : 'Approuver'}
           </button>
         </div>
       </div>
