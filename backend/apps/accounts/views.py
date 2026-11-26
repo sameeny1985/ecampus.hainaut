@@ -8,14 +8,31 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from django.contrib.auth import logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
+from django.conf import settings
 from django.utils import timezone
 from django.db.models import Q
-from .models import User, Profile, BlockedUser, CookieConsent
+from .models import User, Profile, BlockedUser, CookieConsent, RegistrationRequest
 from .serializers import (
     UserSerializer, UserPublicSerializer, RegisterSerializer, LoginSerializer,
     ProfileUpdateSerializer, CookieConsentSerializer, BlockedUserSerializer
 )
 from .permissions import IsOwnerOrAdmin
+
+
+def _notify_moderators_and_admins(title, message, link='/dashboard'):
+    staff_users = User.objects.filter(is_active=True, role__in=['moderator', 'admin'])
+    try:
+        from apps.notifications.models import Notification
+        for staff in staff_users:
+            Notification.objects.create(
+                recipient=staff,
+                title=title,
+                message=message,
+                link=link,
+            )
+    except Exception:
+        pass
 
 
 class RegisterView(generics.CreateAPIView):
@@ -121,6 +138,192 @@ class ChangePasswordView(views.APIView):
             {'detail': 'Mot de passe mis à jour avec succès.'},
             status=status.HTTP_200_OK
         )
+
+
+class FirstYearRegistrationRequestView(views.APIView):
+    """ثبت درخواست ثبت‌نام دانشجوی سال اول با ایمیل شخصی/گوگل"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        first_name = (request.data.get('first_name') or '').strip()
+        last_name = (request.data.get('last_name') or '').strip()
+        personal_email = (request.data.get('personal_email') or '').strip().lower()
+        bachelor = (request.data.get('bachelor') or '').strip()
+
+        if not first_name or not last_name or not personal_email or not bachelor:
+            return Response(
+                {'detail': 'Veuillez remplir le prénom, le nom, votre e-mail et la filière.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        req_obj = RegistrationRequest.objects.create(
+            first_name=first_name,
+            last_name=last_name,
+            personal_email=personal_email,
+            academic_year='1ere',
+            bachelor=bachelor,
+            status=RegistrationRequest.Status.PENDING,
+        )
+
+        _notify_moderators_and_admins(
+            title='Nouvelle demande d\'inscription (1re année)',
+            message=f'{first_name} {last_name} ({personal_email}) - Filière : {bachelor}',
+            link='/registration-requests',
+        )
+
+        return Response(
+            {
+                'id': str(req_obj.id),
+                'message': 'Votre demande a bien été transmise au modérateur. Vous recevrez vos identifiants institutionnels et le statut de votre inscription.'
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+
+class ModeratorRegistrationRequestListView(views.APIView):
+    """لیست درخواست‌های ثبت‌نام سال اولی‌ها برای مدریتور / ادمین"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if getattr(request.user, 'role', None) not in ('moderator', 'admin'):
+            return Response({'error': 'Accès réservé au modérateur / administrateur.'}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = RegistrationRequest.objects.all()
+        items = [
+            {
+                'id': str(r.id),
+                'first_name': r.first_name,
+                'last_name': r.last_name,
+                'personal_email': r.personal_email,
+                'academic_year': r.academic_year,
+                'bachelor': r.bachelor,
+                'status': r.status,
+                'assigned_institutional_email': r.assigned_institutional_email,
+                'assigned_temporary_password': r.assigned_temporary_password,
+                'moderator_note': r.moderator_note,
+                'created_at': r.created_at,
+                'reviewed_at': r.reviewed_at,
+            }
+            for r in qs
+        ]
+        return Response(items)
+
+
+class ModeratorRegistrationRequestDecisionView(views.APIView):
+    """تایید یا رد درخواست ثبت‌نام و ارسال ایمیل و پسورد دانشگاهی توسط مدریتور"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, req_id):
+        if getattr(request.user, 'role', None) not in ('moderator', 'admin'):
+            return Response({'error': 'Accès réservé au modérateur / administrateur.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            req_obj = RegistrationRequest.objects.get(id=req_id)
+        except RegistrationRequest.DoesNotExist:
+            return Response({'error': 'Demande introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        action = (request.data.get('action') or '').strip().lower()
+        assigned_email = (request.data.get('assigned_institutional_email') or '').strip().lower()
+        assigned_password = (request.data.get('assigned_temporary_password') or '').strip()
+        note = (request.data.get('moderator_note') or '').strip()
+
+        if action not in ('approve', 'reject'):
+            return Response({'error': 'Action invalide (approve ou reject).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if action == 'approve':
+            if not assigned_email or not assigned_password:
+                return Response(
+                    {'error': 'Veuillez saisir l\'adresse e-mail institutionnelle et le mot de passe temporaire.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if not assigned_email.endswith('@hainaut-ea.be'):
+                return Response(
+                    {'error': 'L\'adresse institutionnelle doit se terminer par @hainaut-ea.be.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user, created = User.objects.get_or_create(
+                email=assigned_email,
+                defaults={
+                    'first_name': req_obj.first_name,
+                    'last_name': req_obj.last_name,
+                    'role': User.Role.STUDENT,
+                    'status': User.AccountStatus.ACTIVE,
+                    'is_active': True,
+                    'privacy_accepted': True,
+                    'terms_accepted': True,
+                    'privacy_accepted_at': timezone.now(),
+                }
+            )
+            user.first_name = req_obj.first_name
+            user.last_name = req_obj.last_name
+            user.role = User.Role.STUDENT
+            user.status = User.AccountStatus.ACTIVE
+            user.is_active = True
+            user.set_password(assigned_password)
+            user.save()
+
+            profile, _ = Profile.objects.get_or_create(user=user)
+            profile.bachelor = req_obj.bachelor
+            profile.save()
+
+            req_obj.status = RegistrationRequest.Status.APPROVED
+            req_obj.assigned_institutional_email = assigned_email
+            req_obj.assigned_temporary_password = assigned_password
+            req_obj.moderator_note = note or 'Inscription approuvée.'
+            req_obj.reviewed_by = request.user
+            req_obj.reviewed_at = timezone.now()
+            req_obj.save()
+
+            email_body = (
+                f"Bonjour {req_obj.first_name} {req_obj.last_name},\n\n"
+                f"Votre inscription sur CampusConnect (IETC Charleroi) a été APPROUVÉE.\n"
+                f"Filière : {req_obj.bachelor} (1re année)\n"
+                f"E-mail institutionnel : {assigned_email}\n"
+                f"Mot de passe temporaire : {assigned_password}\n"
+                f"Remarque : {req_obj.moderator_note}\n"
+            )
+            try:
+                send_mail(
+                    subject='CampusConnect — Inscription approuvée',
+                    message=email_body,
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hainaut-ea.be'),
+                    recipient_list=[req_obj.personal_email],
+                    fail_silently=True,
+                )
+            except Exception:
+                pass
+
+            return Response({
+                'message': f'Inscription approuvée et identifiants envoyés à {req_obj.personal_email}.',
+                'status': req_obj.status,
+            })
+
+        req_obj.status = RegistrationRequest.Status.REJECTED
+        req_obj.moderator_note = note or 'Demande refusée.'
+        req_obj.reviewed_by = request.user
+        req_obj.reviewed_at = timezone.now()
+        req_obj.save()
+
+        try:
+            send_mail(
+                subject='CampusConnect — Statut de votre demande d\'inscription',
+                message=(
+                    f"Bonjour {req_obj.first_name} {req_obj.last_name},\n\n"
+                    f"Statut de votre inscription : REFUSÉE.\n"
+                    f"Motif / Note : {req_obj.moderator_note}\n"
+                ),
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hainaut-ea.be'),
+                recipient_list=[req_obj.personal_email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
+
+        return Response({
+            'message': f'Demande refusée et notification envoyée à {req_obj.personal_email}.',
+            'status': req_obj.status,
+        })
 
 
 class MeView(generics.RetrieveUpdateAPIView):
