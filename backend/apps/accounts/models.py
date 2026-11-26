@@ -152,3 +152,40 @@ class CookieConsent(models.Model):
     class Meta:
         verbose_name = 'Consentement cookies'
         verbose_name_plural = 'Consentements cookies'
+class RegistrationRequest(models.Model):
+    """درخواست ثبت‌نام دانشجویان سال اول (با ایمیل شخصی/گوگل) برای تایید توسط مدریتور"""
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        APPROVED = 'approved', 'Approuvée'
+        REJECTED = 'rejected', 'Refusée'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    first_name = models.CharField('Prénom', max_length=150)
+    last_name = models.CharField('Nom', max_length=150)
+    personal_email = models.EmailField('Adresse e-mail personnelle / Google')
+    academic_year = models.CharField('Année académique', max_length=20, default='1ere')
+    bachelor = models.CharField('Filière / Bachelier', max_length=120)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+
+    # اطلاعاتی که مدریتور پس از تایید برای کاربر تعیین و ارسال می‌کند
+    assigned_institutional_email = models.EmailField('E-mail institutionnel attribué', blank=True)
+    assigned_temporary_password = models.CharField('Mot de passe temporaire attribué', max_length=128, blank=True)
+    moderator_note = models.TextField('Note / Statut envoyé au candidat', blank=True)
+
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_registration_requests'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Demande d\'inscription (1re année)'
+        verbose_name_plural = 'Demandes d\'inscription (1re année)'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.first_name} {self.last_name} ({self.personal_email}) - {self.status}'
