@@ -4,11 +4,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 import ProfileMenu from './ProfileMenu'
 
+const ADMIN_LOGIN_URL = 'https://ecampus-hainaut.onrender.com/admin/login/?next=/admin/'
+
 export default function MainLayout({ children }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const canCreateCourse = user && ['admin', 'moderator'].includes(user.role)
   const canManageRequests = user && ['admin', 'moderator'].includes(user.role)
+  const isModerator = user && user.role === 'moderator'
 
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifications, setNotifications] = useState([])
@@ -61,6 +64,10 @@ export default function MainLayout({ children }) {
     logout()
   }
 
+  const handleAdminLoginClick = () => {
+    window.open(ADMIN_LOGIN_URL, '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-clip bg-gray-50">
       <header className="bg-white border-b w-full max-w-full relative">
@@ -84,6 +91,15 @@ export default function MainLayout({ children }) {
               <Link to="/registration-requests" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
                 Demandes (1re année)
               </Link>
+            )}
+            {isModerator && (
+              <button
+                type="button"
+                onClick={handleAdminLoginClick}
+                className="text-xs sm:text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap transition"
+              >
+                Connexion Admin
+              </button>
             )}
           </div>
 
