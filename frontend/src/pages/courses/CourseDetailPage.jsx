@@ -10,6 +10,7 @@ import {
   uploadResource,
   deleteResource
 } from '../../services/communityService'
+import api from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 
 const STATUS_OPTIONS = [
@@ -40,6 +41,7 @@ export default function CourseDetailPage() {
   const [editing, setEditing] = useState(null) // membership id
   const [gradeForm, setGradeForm] = useState({ status: 'in_progress', grade: '', grade_comment: '' })
   const [message, setMessage] = useState(null)
+  const [hasPendingUpperYear, setHasPendingUpperYear] = useState(false)
 
   // State برای آپلود جزوه و منابع درسی
   const [resTitle, setResTitle] = useState('')
@@ -67,6 +69,27 @@ export default function CourseDetailPage() {
     return []
   }
 
+  const checkPendingUpperYearRequest = async () => {
+    if (!user || user.role !== 'student') {
+      setHasPendingUpperYear(false)
+      return false
+    }
+    try {
+      const res = await api.get('/auth/moderator/registration-requests/')
+      const list = extractList(res.data)
+      const pending = list.some(
+        r =>
+          ['2eme', '3eme'].includes(r.academic_year) &&
+          r.status === 'pending' &&
+          (r.personal_email || '').toLowerCase() === (user.email || '').toLowerCase()
+      )
+      setHasPendingUpperYear(pending)
+      return pending
+    } catch {
+      return false
+    }
+  }
+
   const load = async () => {
     setLoading(true)
     try {
@@ -76,6 +99,7 @@ export default function CourseDetailPage() {
       ])
       setCourse(cRes.data)
       setMembers(extractList(mRes.data))
+      await checkPendingUpperYearRequest()
     } catch {
       setCourse(null)
       setMembers([])
@@ -84,9 +108,18 @@ export default function CourseDetailPage() {
     }
   }
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => { load() }, [id, user?.id])
 
   const handleJoin = async () => {
+    const isPending = await checkPendingUpperYearRequest()
+    if (isPending) {
+      setMessage({
+        type: 'error',
+        text: "Votre demande d'inscription (2e/3e année) est en attente de validation par le modérateur avant de pouvoir vous inscrire aux cours."
+      })
+      return
+    }
+
     setJoining(true)
     try {
       const res = await joinCourse(id)
@@ -285,6 +318,10 @@ export default function CourseDetailPage() {
                   </button>
                 )}
               </div>
+            ) : hasPendingUpperYear ? (
+              <span className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                ⏳ Demande en attente de validation par le modérateur
+              </span>
             ) : (
               <button
                 onClick={handleJoin}
