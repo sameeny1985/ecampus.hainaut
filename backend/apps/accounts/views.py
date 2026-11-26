@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 from django.contrib.auth import logout
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.db.models import Q
 from .models import User, Profile, BlockedUser, CookieConsent
@@ -65,6 +67,52 @@ class LogoutView(views.APIView):
         except Exception:
             pass
         return Response({'message': 'Déconnexion réussie.'}, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(views.APIView):
+    """Changer le mot de passe de l'utilisateur connecté"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        current_password = (
+            request.data.get('current_password')
+            or request.data.get('old_password')
+            or ''
+        )
+        new_password = request.data.get('new_password') or ''
+
+        if not current_password:
+            return Response(
+                {'detail': 'Veuillez saisir votre mot de passe actuel.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not request.user.check_password(current_password):
+            return Response(
+                {'detail': 'Le mot de passe actuel est incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not new_password:
+            return Response(
+                {'detail': 'Veuillez saisir un nouveau mot de passe.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            validate_password(new_password, user=request.user)
+        except ValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response(
+            {'detail': 'Mot de passe mis à jour avec succès.'},
+            status=status.HTTP_200_OK
+        )
 
 
 class MeView(generics.RetrieveUpdateAPIView):
@@ -199,6 +247,8 @@ class BlockedListView(generics.ListAPIView):
 
     def get_queryset(self):
         return BlockedUser.objects.filter(blocker=self.request.user).select_related('blocked')
+
+
 class StaffUserListView(views.APIView):
     """Liste des étudiants et enseignants réservée au personnel (admin / moderator)"""
     permission_classes = [permissions.IsAuthenticated]
