@@ -43,22 +43,20 @@ class UserPublicSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8, style={'input_type': 'password'})
     password_confirm = serializers.CharField(write_only=True, style={'input_type': 'password'})
-    role = serializers.ChoiceField(
-        choices=[
-            (User.Role.STUDENT, 'Étudiant'),
-            (User.Role.TEACHER, 'Enseignant'),
-        ],
-        default=User.Role.STUDENT,
+    academic_year = serializers.ChoiceField(
+        choices=[('2eme', '2e année'), ('3eme', '3e année')],
+        default='2eme',
         required=False,
+        write_only=True,
     )
-    bachelor = serializers.CharField(max_length=100, required=False, allow_blank=True, write_only=True)
+    bachelor = serializers.CharField(max_length=120, required=True, write_only=True)
     accept_terms = serializers.BooleanField(write_only=True)
     accept_privacy = serializers.BooleanField(write_only=True)
 
     class Meta:
         model = User
         fields = [
-            'email', 'first_name', 'last_name', 'role', 'bachelor',
+            'email', 'first_name', 'last_name', 'academic_year', 'bachelor',
             'password', 'password_confirm', 'accept_terms', 'accept_privacy'
         ]
 
@@ -67,11 +65,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         if '@' not in normalized:
             raise serializers.ValidationError('Adresse e-mail invalide.')
         domain = normalized.split('@')[-1]
-        allowed = [d.strip().lower() for d in settings.INSTITUTIONAL_EMAIL_DOMAINS]
+        allowed = [d.strip().lower() for d in getattr(settings, 'INSTITUTIONAL_EMAIL_DOMAINS', ['hainaut-ea.be'])]
         if domain not in allowed:
             raise serializers.ValidationError(
-                f'Seules les adresses institutionnelles sont autorisées '
-                f'({", ".join(allowed)}).'
+                f'Seules les adresses institutionnelles sont autorisées ({", ".join(allowed)}).'
             )
         if User.objects.filter(email__iexact=normalized).exists():
             raise serializers.ValidationError('Un compte existe déjà avec cette adresse.')
@@ -90,25 +87,28 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password_confirm')
         validated_data.pop('accept_terms')
         validated_data.pop('accept_privacy')
+        academic_year = validated_data.pop('academic_year', '2eme')
         bachelor = (validated_data.pop('bachelor', '') or '').strip()
         password = validated_data.pop('password')
-        role = validated_data.get('role', User.Role.STUDENT)
 
-        is_teacher_request = role == User.Role.TEACHER
         user = User.objects.create_user(
             **validated_data,
             password=password,
-            role=role,
-            status=User.AccountStatus.PENDING if is_teacher_request else User.AccountStatus.ACTIVE,
-            is_active=not is_teacher_request,
+            role=User.Role.STUDENT,
+            status=User.AccountStatus.ACTIVE,
+            is_active=True,
             privacy_accepted=True,
             terms_accepted=True,
             privacy_accepted_at=timezone.now(),
         )
-        Profile.objects.create(user=user, bachelor=bachelor)
+        profile, _ = Profile.objects.get_or_create(user=user)
+        profile.bachelor = bachelor
+        existing_courses = profile.courses if isinstance(profile.courses, list) else []
+        year_tag = f"Année: {academic_year}"
+        if year_tag not in existing_courses:
+            profile.courses = [year_tag, *existing_courses]
+        profile.save()
         return user
-
-
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(style={'input_type': 'password'})
