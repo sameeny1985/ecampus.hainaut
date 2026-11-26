@@ -8,6 +8,7 @@ export default function MainLayout({ children }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const canCreateCourse = user && ['admin', 'moderator'].includes(user.role)
+  const canManageRequests = user && ['admin', 'moderator'].includes(user.role)
 
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifications, setNotifications] = useState([])
@@ -71,6 +72,11 @@ export default function MainLayout({ children }) {
             {canCreateCourse && (
               <Link to="/courses/create" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">
                 Ajouter un cours
+              </Link>
+            )}
+            {canManageRequests && (
+              <Link to="/registration-requests" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">
+                Demandes (1re année)
               </Link>
             )}
           </div>
