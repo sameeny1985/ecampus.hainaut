@@ -200,6 +200,12 @@ class UpperYearRegistrationView(views.APIView):
         profile.courses = [f"Année: {academic_year}", *filtered_courses]
         profile.save()
 
+        _notify_moderators_and_admins(
+            title='Inscription 2e / 3e année enregistrée',
+            message=f"{user.first_name} {user.last_name} ({user.email}) — {academic_year} — {bachelor}",
+            link='/dashboard',
+        )
+
         refresh = RefreshToken.for_user(user)
         return Response({
             'user': UserSerializer(user).data,
@@ -352,19 +358,30 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
                 f"Mot de passe temporaire : {assigned_password}\n"
                 f"Remarque : {req_obj.moderator_note}\n"
             )
+            sent_count = 0
+            email_error = ''
             try:
-                send_mail(
+                sent_count = send_mail(
                     subject='CampusConnect — Inscription approuvée',
                     message=email_body,
                     from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hainaut-ea.be'),
                     recipient_list=[req_obj.personal_email],
-                    fail_silently=True,
+                    fail_silently=False,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                email_error = str(exc)
+
+            if sent_count > 0:
+                msg = f'Inscription approuvée et e-mail envoyé à {req_obj.personal_email}.'
+            else:
+                msg = (
+                    f"Inscription approuvée, mais l'e-mail n'a pas pu être envoyé à {req_obj.personal_email} "
+                    f"(vérifiez EMAIL_HOST / EMAIL_HOST_USER / EMAIL_HOST_PASSWORD sur Render : {email_error or 'SMTP non configuré'})."
+                )
 
             return Response({
-                'message': f'Inscription approuvée et identifiants envoyés à {req_obj.personal_email}.',
+                'message': msg,
+                'email_sent': sent_count > 0,
                 'status': req_obj.status,
             })
 
@@ -374,8 +391,10 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
         req_obj.reviewed_at = timezone.now()
         req_obj.save()
 
+        sent_count = 0
+        email_error = ''
         try:
-            send_mail(
+            sent_count = send_mail(
                 subject='CampusConnect — Statut de votre demande d\'inscription',
                 message=(
                     f"Bonjour {req_obj.first_name} {req_obj.last_name},\n\n"
@@ -384,13 +403,22 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
                 ),
                 from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hainaut-ea.be'),
                 recipient_list=[req_obj.personal_email],
-                fail_silently=True,
+                fail_silently=False,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            email_error = str(exc)
+
+        if sent_count > 0:
+            msg = f'Demande refusée et notification envoyée à {req_obj.personal_email}.'
+        else:
+            msg = (
+                f"Demande refusée, mais l'e-mail n'a pas pu être envoyé à {req_obj.personal_email} "
+                f"(vérifiez EMAIL_HOST / EMAIL_HOST_USER / EMAIL_HOST_PASSWORD sur Render : {email_error or 'SMTP non configuré'})."
+            )
 
         return Response({
-            'message': f'Demande refusée et notification envoyée à {req_obj.personal_email}.',
+            'message': msg,
+            'email_sent': sent_count > 0,
             'status': req_obj.status,
         })
 
