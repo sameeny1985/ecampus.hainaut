@@ -60,21 +60,21 @@ export default function MainLayout({ children }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link to="/dashboard" className="text-xl font-bold text-blue-600">CampusConnect</Link>
-            <Link to="/messages" className="text-sm text-gray-600 hover:text-blue-600">Email</Link>
-            <Link to="/courses" className="text-sm text-gray-600 hover:text-blue-600">Cours & Filières</Link>
+    <div className="min-h-screen w-full max-w-full overflow-x-clip bg-gray-50">
+      <header className="bg-white border-b w-full max-w-full">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-2 sm:py-0 sm:h-16 flex flex-wrap items-center justify-between gap-2 min-w-0">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-6 min-w-0">
+            <Link to="/dashboard" className="text-lg sm:text-xl font-bold text-blue-600 shrink-0">CampusConnect</Link>
+            <Link to="/messages" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">Email</Link>
+            <Link to="/courses" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">Cours & Filières</Link>
             {canCreateCourse && (
-              <Link to="/courses/create" className="text-sm text-gray-600 hover:text-blue-600">
+              <Link to="/courses/create" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">
                 Ajouter un cours
               </Link>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            <div className="relative">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 max-w-full">
+            <div className="relative shrink-0">
               <button
                 onClick={handleBellClick}
                 className="relative p-1.5 text-gray-600 hover:text-blue-600 focus:outline-none"
@@ -89,7 +89,7 @@ export default function MainLayout({ children }) {
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border z-30 overflow-hidden">
+                <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 mt-2 sm:w-80 bg-white rounded-xl shadow-lg border z-30 overflow-hidden">
                   <div className="p-3 border-b flex justify-between items-center bg-gray-50">
                     <span className="font-semibold text-sm text-gray-700">Notifications</span>
                     {unreadCount > 0 && (
@@ -123,12 +123,12 @@ export default function MainLayout({ children }) {
               )}
             </div>
 
-            <span className="text-sm text-gray-600">{user?.first_name} {user?.last_name}</span>
-            <button onClick={handleLogout} className="text-sm text-red-600 hover:underline">Déconnexion</button>
+            <span className="hidden md:inline text-sm text-gray-600 truncate max-w-[160px]">{user?.first_name} {user?.last_name}</span>
+            <button onClick={handleLogout} className="text-xs sm:text-sm text-red-600 hover:underline shrink-0 whitespace-nowrap">Déconnexion</button>
           </div>
         </div>
       </header>
-      <main>{children}</main>
+      <main className="w-full max-w-full overflow-x-clip">{children}</main>
     </div>
   )
 }
