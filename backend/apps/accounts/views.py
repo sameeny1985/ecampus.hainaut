@@ -141,7 +141,7 @@ class ChangePasswordView(views.APIView):
 
 
 class UpperYearRegistrationView(views.APIView):
-    """ثبت‌نام سال دوم یا سوم پس از ورود با ایمیل و پسورد موجود"""
+    """ثبت درخواست ثبت‌نام سال دوم یا سوم برای بررسی و تایید توسط مدریتور"""
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -180,41 +180,45 @@ class UpperYearRegistrationView(views.APIView):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
 
+        effective_first_name = first_name or user.first_name or user.email.split('@')[0]
+        effective_last_name = last_name or user.last_name or 'Étudiant'
+
         if first_name:
             user.first_name = first_name
         if last_name:
             user.last_name = last_name
-        user.role = User.Role.STUDENT
-        user.status = User.AccountStatus.ACTIVE
-        user.is_active = True
         user.privacy_accepted = True
         user.terms_accepted = True
         if not user.privacy_accepted_at:
             user.privacy_accepted_at = timezone.now()
         user.save()
 
-        profile, _ = Profile.objects.get_or_create(user=user)
-        profile.bachelor = bachelor
-        existing_courses = profile.courses if isinstance(profile.courses, list) else []
-        filtered_courses = [c for c in existing_courses if not str(c).startswith('Année:')]
-        profile.courses = [f"Année: {academic_year}", *filtered_courses]
-        profile.save()
-
-        _notify_moderators_and_admins(
-            title='Inscription 2e / 3e année enregistrée',
-            message=f"{user.first_name} {user.last_name} ({user.email}) — {academic_year} — {bachelor}",
-            link='/dashboard',
+        # ثبت درخواست در انتظار تایید مدریتور
+        req_obj = RegistrationRequest.objects.create(
+            first_name=effective_first_name,
+            last_name=effective_last_name,
+            personal_email=user.email.lower(),
+            academic_year=academic_year,
+            bachelor=bachelor,
+            assigned_institutional_email=user.email.lower(),
+            status=RegistrationRequest.Status.PENDING,
         )
 
-        refresh = RefreshToken.for_user(user)
+        _notify_moderators_and_admins(
+            title=f"Demande d'inscription ({'2e année' if academic_year == '2eme' else '3e année'})",
+            message=f"{effective_first_name} {effective_last_name} ({user.email}) — {bachelor}",
+            link='/registration-requests',
+        )
+
         return Response({
-            'user': UserSerializer(user).data,
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-            'message': f"Inscription en {'2e année' if academic_year == '2eme' else '3e année'} enregistrée avec succès !"
-        }, status=status.HTTP_200_OK)
-
-
+            'id': str(req_obj.id),
+            'pending_approval': True,
+            'status': req_obj.status,
+            'message': (
+                f"Votre demande d'inscription en {'2e année' if academic_year == '2eme' else '3e année'} "
+                f"a été envoyée au modérateur. Vous pourrez vous inscrire aux cours après validation."
+            )
+        }, status=status.HTTP_201_CREATED)
 class FirstYearRegistrationRequestView(views.APIView):
     """ثبت درخواست ثبت‌نام دانشجوی سال اول با ایمیل شخصی/گوگل"""
     permission_classes = [permissions.AllowAny]
@@ -304,60 +308,116 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
 
         if action not in ('approve', 'reject'):
             return Response({'error': 'Action invalide (approve ou reject).'}, status=status.HTTP_400_BAD_REQUEST)
-
         if action == 'approve':
-            if not assigned_email or not assigned_password:
-                return Response(
-                    {'error': 'Veuillez saisir l\'adresse e-mail institutionnelle et le mot de passe temporaire.'},
-                    status=status.HTTP_400_BAD_REQUEST
+            is_upper_year = req_obj.academic_year in ('2eme', '3eme')
+
+            if is_upper_year:
+                target_email = (assigned_email or req_obj.assigned_institutional_email or req_obj.personal_email).strip().lower()
+                if not target_email:
+                    return Response(
+                        {'error': 'Adresse e-mail étudiant introuvable.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                user, _ = User.objects.get_or_create(
+                    email=target_email,
+                    defaults={
+                        'first_name': req_obj.first_name,
+                        'last_name': req_obj.last_name,
+                        'role': User.Role.STUDENT,
+                        'status': User.AccountStatus.ACTIVE,
+                        'is_active': True,
+                        'privacy_accepted': True,
+                        'terms_accepted': True,
+                        'privacy_accepted_at': timezone.now(),
+                    }
                 )
-            if not assigned_email.endswith('@hainaut-ea.be'):
-                return Response(
-                    {'error': 'L\'adresse institutionnelle doit se terminer par @hainaut-ea.be.'},
-                    status=status.HTTP_400_BAD_REQUEST
+                user.first_name = req_obj.first_name
+                user.last_name = req_obj.last_name
+                user.role = User.Role.STUDENT
+                user.status = User.AccountStatus.ACTIVE
+                user.is_active = True
+                if assigned_password:
+                    user.set_password(assigned_password)
+                user.save()
+
+                profile, _ = Profile.objects.get_or_create(user=user)
+                profile.bachelor = req_obj.bachelor
+                existing_courses = profile.courses if isinstance(profile.courses, list) else []
+                filtered_courses = [c for c in existing_courses if not str(c).startswith('Année:')]
+                profile.courses = [f"Année: {req_obj.academic_year}", *filtered_courses]
+                profile.save()
+
+                req_obj.status = RegistrationRequest.Status.APPROVED
+                req_obj.assigned_institutional_email = target_email
+                if assigned_password:
+                    req_obj.assigned_temporary_password = assigned_password
+                req_obj.moderator_note = note or 'Inscription approuvée.'
+                req_obj.reviewed_by = request.user
+                req_obj.reviewed_at = timezone.now()
+                req_obj.save()
+
+                email_body = (
+                    f"Bonjour {req_obj.first_name} {req_obj.last_name},\n\n"
+                    f"Votre inscription en {'2e année' if req_obj.academic_year == '2eme' else '3e année'} "
+                    f"({req_obj.bachelor}) sur CampusConnect a été APPROUVÉE.\n"
+                    f"Vous pouvez désormais vous inscrire à vos cours.\n"
+                    f"Remarque : {req_obj.moderator_note}\n"
+                )
+            else:
+                if not assigned_email or not assigned_password:
+                    return Response(
+                        {'error': 'Veuillez saisir l\'adresse e-mail institutionnelle et le mot de passe temporaire.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                if not assigned_email.endswith('@hainaut-ea.be'):
+                    return Response(
+                        {'error': 'L\'adresse institutionnelle doit se terminer par @hainaut-ea.be.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                user, _ = User.objects.get_or_create(
+                    email=assigned_email,
+                    defaults={
+                        'first_name': req_obj.first_name,
+                        'last_name': req_obj.last_name,
+                        'role': User.Role.STUDENT,
+                        'status': User.AccountStatus.ACTIVE,
+                        'is_active': True,
+                        'privacy_accepted': True,
+                        'terms_accepted': True,
+                        'privacy_accepted_at': timezone.now(),
+                    }
+                )
+                user.first_name = req_obj.first_name
+                user.last_name = req_obj.last_name
+                user.role = User.Role.STUDENT
+                user.status = User.AccountStatus.ACTIVE
+                user.is_active = True
+                user.set_password(assigned_password)
+                user.save()
+
+                profile, _ = Profile.objects.get_or_create(user=user)
+                profile.bachelor = req_obj.bachelor
+                profile.save()
+
+                req_obj.status = RegistrationRequest.Status.APPROVED
+                req_obj.assigned_institutional_email = assigned_email
+                req_obj.assigned_temporary_password = assigned_password
+                req_obj.moderator_note = note or 'Inscription approuvée.'
+                req_obj.reviewed_by = request.user
+                req_obj.reviewed_at = timezone.now()
+                req_obj.save()
+
+                email_body = (
+                    f"Bonjour {req_obj.first_name} {req_obj.last_name},\n\n"
+                    f"Votre inscription sur CampusConnect (IETC Charleroi) a été APPROUVÉE.\n"
+                    f"Filière : {req_obj.bachelor} (1re année)\n"
+                    f"E-mail institutionnel : {assigned_email}\n"
+                    f"Mot de passe temporaire : {assigned_password}\n"
+                    f"Remarque : {req_obj.moderator_note}\n"
                 )
 
-            user, created = User.objects.get_or_create(
-                email=assigned_email,
-                defaults={
-                    'first_name': req_obj.first_name,
-                    'last_name': req_obj.last_name,
-                    'role': User.Role.STUDENT,
-                    'status': User.AccountStatus.ACTIVE,
-                    'is_active': True,
-                    'privacy_accepted': True,
-                    'terms_accepted': True,
-                    'privacy_accepted_at': timezone.now(),
-                }
-            )
-            user.first_name = req_obj.first_name
-            user.last_name = req_obj.last_name
-            user.role = User.Role.STUDENT
-            user.status = User.AccountStatus.ACTIVE
-            user.is_active = True
-            user.set_password(assigned_password)
-            user.save()
-
-            profile, _ = Profile.objects.get_or_create(user=user)
-            profile.bachelor = req_obj.bachelor
-            profile.save()
-
-            req_obj.status = RegistrationRequest.Status.APPROVED
-            req_obj.assigned_institutional_email = assigned_email
-            req_obj.assigned_temporary_password = assigned_password
-            req_obj.moderator_note = note or 'Inscription approuvée.'
-            req_obj.reviewed_by = request.user
-            req_obj.reviewed_at = timezone.now()
-            req_obj.save()
-
-            email_body = (
-                f"Bonjour {req_obj.first_name} {req_obj.last_name},\n\n"
-                f"Votre inscription sur CampusConnect (IETC Charleroi) a été APPROUVÉE.\n"
-                f"Filière : {req_obj.bachelor} (1re année)\n"
-                f"E-mail institutionnel : {assigned_email}\n"
-                f"Mot de passe temporaire : {assigned_password}\n"
-                f"Remarque : {req_obj.moderator_note}\n"
-            )
             sent_count = 0
             email_error = ''
             try:
@@ -384,7 +444,6 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
                 'email_sent': sent_count > 0,
                 'status': req_obj.status,
             })
-
         req_obj.status = RegistrationRequest.Status.REJECTED
         req_obj.moderator_note = note or 'Demande refusée.'
         req_obj.reviewed_by = request.user
