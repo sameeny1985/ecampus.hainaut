@@ -27,6 +27,14 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+
+        if not user.is_active or user.status == User.AccountStatus.PENDING:
+            return Response({
+                'user': UserSerializer(user).data,
+                'pending_approval': True,
+                'message': 'Votre demande de compte a bien été enregistrée et est en attente de validation.'
+            }, status=status.HTTP_201_CREATED)
+
         refresh = RefreshToken.for_user(user)
         return Response({
             'user': UserSerializer(user).data,
