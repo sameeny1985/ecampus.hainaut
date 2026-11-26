@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 
 export default function LoginPage() {
@@ -18,8 +18,8 @@ export default function LoginPage() {
       await login(email, password)
       navigate('/dashboard')
     } catch (err) {
-      const msg = err.response?.data?.detail || 
-                  err.response?.data?.non_field_errors?.[0] || 
+      const msg = err.response?.data?.detail ||
+                  err.response?.data?.non_field_errors?.[0] ||
                   'Identifiants incorrects'
       setError(msg)
     } finally {
@@ -28,16 +28,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip flex items-center justify-center bg-gray-50 px-4 py-8">
+      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 sm:p-8 border">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-blue-600">CampusConnect</h1>
+          <Link to="/" className="text-3xl font-bold text-blue-600">
+            CampusConnect
+          </Link>
           <p className="text-gray-600 mt-2">Réseau social de votre établissement</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
+            <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm border border-red-200">
               {error}
             </div>
           )}
@@ -52,7 +54,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="prenom.nom@hainaut.be"
+              placeholder="prenom.nom@hainaut-ea.be"
             />
           </div>
 
@@ -78,9 +80,17 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center mt-6 text-sm text-gray-500">
-          Contactez l'administration de votre établissement pour obtenir un compte.
-        </p>
+        <div className="mt-6 text-center space-y-2 text-sm text-gray-600">
+          <div>
+            Pas encore de compte ?{' '}
+            <Link to="/register" className="text-blue-600 font-semibold hover:underline">
+              Créer un compte
+            </Link>
+          </div>
+          <p className="text-xs text-gray-500">
+            Les comptes enseignants ou spécifiques peuvent nécessiter une validation de l'administration.
+          </p>
+        </div>
       </div>
     </div>
   )
