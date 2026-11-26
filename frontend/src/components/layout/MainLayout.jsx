@@ -63,26 +63,34 @@ export default function MainLayout({ children }) {
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-clip bg-gray-50">
-      <header className="bg-white border-b w-full max-w-full">
-        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-2 sm:py-0 sm:h-16 flex flex-wrap items-center justify-between gap-2 min-w-0">
-          <div className="flex flex-wrap items-center gap-3 sm:gap-6 min-w-0">
-            <Link to="/dashboard" className="text-lg sm:text-xl font-bold text-blue-600 shrink-0">CampusConnect</Link>
-            <Link to="/messages" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">Email</Link>
-            <Link to="/courses" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">Cours & Filières</Link>
+      <header className="bg-white border-b w-full max-w-full relative">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2.5 sm:gap-5 min-w-0 overflow-x-auto no-scrollbar">
+            <Link to="/dashboard" className="text-base sm:text-xl font-bold text-blue-600 shrink-0 whitespace-nowrap">
+              CampusConnect
+            </Link>
+            <Link to="/messages" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
+              Email
+            </Link>
+            <Link to="/courses" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
+              Cours & Filières
+            </Link>
             {canCreateCourse && (
-              <Link to="/courses/create" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">
+              <Link to="/courses/create" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
                 Ajouter un cours
               </Link>
             )}
             {canManageRequests && (
-              <Link to="/registration-requests" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0">
+              <Link to="/registration-requests" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
                 Demandes (1re année)
               </Link>
             )}
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 max-w-full">
+
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <div className="relative shrink-0">
               <button
+                type="button"
                 onClick={handleBellClick}
                 className="relative p-1.5 text-gray-600 hover:text-blue-600 focus:outline-none"
                 title="Notifications"
@@ -96,11 +104,15 @@ export default function MainLayout({ children }) {
               </button>
 
               {showDropdown && (
-                <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 mt-2 sm:w-80 bg-white rounded-xl shadow-lg border z-30 overflow-hidden">
-                  <div className="p-3 border-b flex justify-between items-center bg-gray-50">
+                <div className="fixed top-16 left-2 right-2 sm:absolute sm:top-full sm:left-auto sm:right-0 mt-2 w-auto sm:w-80 max-w-[calc(100vw-1rem)] bg-white rounded-xl shadow-lg border z-50 overflow-hidden">
+                  <div className="p-3 border-b flex justify-between items-center bg-gray-50 gap-2">
                     <span className="font-semibold text-sm text-gray-700">Notifications</span>
                     {unreadCount > 0 && (
-                      <button onClick={markAllRead} className="text-xs text-blue-600 hover:underline">
+                      <button
+                        type="button"
+                        onClick={markAllRead}
+                        className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                      >
                         Tout marquer comme lu
                       </button>
                     )}
@@ -117,8 +129,12 @@ export default function MainLayout({ children }) {
                           onClick={() => handleNotificationClick(n)}
                           className={`p-3 cursor-pointer hover:bg-gray-50 ${!n.is_read ? 'bg-blue-50/60' : ''}`}
                         >
-                          <div className="text-sm font-medium text-gray-800">{n.title}</div>
-                          {n.message && <div className="text-xs text-gray-600 truncate mt-0.5">{n.message}</div>}
+                          <div className="text-sm font-medium text-gray-800 break-words">{n.title}</div>
+                          {n.message && (
+                            <div className="text-xs text-gray-600 line-clamp-2 mt-0.5 break-words">
+                              {n.message}
+                            </div>
+                          )}
                           <div className="text-[11px] text-gray-400 mt-1">
                             {new Date(n.created_at).toLocaleString('fr-FR')}
                           </div>
@@ -130,8 +146,17 @@ export default function MainLayout({ children }) {
               )}
             </div>
 
-            <ProfileMenu />
-            <button onClick={handleLogout} className="text-xs sm:text-sm text-red-600 hover:underline shrink-0 whitespace-nowrap">Déconnexion</button>
+            <div className="shrink-0">
+              <ProfileMenu />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="text-xs sm:text-sm text-red-600 hover:underline shrink-0 whitespace-nowrap"
+            >
+              Déconnexion
+            </button>
           </div>
         </div>
       </header>
