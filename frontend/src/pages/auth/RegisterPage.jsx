@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 
@@ -11,10 +11,27 @@ const BACHELOR_OPTIONS = [
   'Bachelier en Droit',
 ]
 
+function decodeJwtPayload(token) {
+  try {
+    const base64Url = token.split('.')[1]
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    )
+    return JSON.parse(jsonPayload)
+  } catch {
+    return null
+  }
+}
+
 export default function RegisterPage() {
   const navigate = useNavigate()
+  const googleButtonRef = useRef(null)
 
-  // 'choose' | 'upper_year' | 'first_year'
+  // 'choose' | 'first_year_google' | 'first_year_details' | 'upper_year'
   const [step, setStep] = useState('choose')
 
   // فرم سال دوم و سوم (با ایمیل دانشگاهی)
@@ -28,15 +45,80 @@ export default function RegisterPage() {
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [acceptPrivacy, setAcceptPrivacy] = useState(false)
 
-  // فرم دانشجوی سال اول (ایمیل گوگل / شخصی + تایید مدریتور)
+  // فرم دانشجوی سال اول: مرحله ۱ ایمیل گوگل، مرحله ۲ تکمیل مشخصات
   const [fyFirstName, setFyFirstName] = useState('')
   const [fyLastName, setFyLastName] = useState('')
   const [googleEmail, setGoogleEmail] = useState('')
+  const [googleVerified, setGoogleVerified] = useState(false)
   const [fyBachelor, setFyBachelor] = useState(BACHELOR_OPTIONS[0])
 
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [infoMsg, setInfoMsg] = useState('')
+
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+
+  useEffect(() => {
+    if (step !== 'first_year_google' || !clientId || !googleButtonRef.current) return
+
+    const initGoogle = () => {
+      if (!window.google?.accounts?.id || !googleButtonRef.current) return
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response) => {
+          const payload = decodeJwtPayload(response?.credential || '')
+          if (payload?.email) {
+            setGoogleEmail(String(payload.email).toLowerCase())
+            if (payload.given_name && !fyFirstName) setFyFirstName(payload.given_name)
+            if (payload.family_name && !fyLastName) setFyLastName(payload.family_name)
+            setGoogleVerified(true)
+            setErrorMsg('')
+            setStep('first_year_details')
+          } else {
+            setErrorMsg("Impossible de lire l'adresse e-mail depuis le compte Google.")
+          }
+        },
+      })
+      googleButtonRef.current.innerHTML = ''
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: 360,
+        text: 'continue_with',
+      })
+    }
+
+    if (window.google?.accounts?.id) {
+      initGoogle()
+      return
+    }
+
+    const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]')
+    if (existingScript) {
+      existingScript.addEventListener('load', initGoogle)
+      return () => existingScript.removeEventListener('load', initGoogle)
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    script.onload = initGoogle
+    document.head.appendChild(script)
+  }, [step, clientId, fyFirstName, fyLastName])
+
+  const handleContinueGoogleStep = (e) => {
+    e.preventDefault()
+    setErrorMsg('')
+    const clean = googleEmail.trim().toLowerCase()
+    if (!clean || !clean.includes('@')) {
+      setErrorMsg('Veuillez saisir ou sélectionner une adresse e-mail Google valide.')
+      return
+    }
+    setGoogleEmail(clean)
+    setGoogleVerified(true)
+    setStep('first_year_details')
+  }
 
   const handleUpperYearSubmit = async (e) => {
     e.preventDefault()
@@ -97,21 +179,19 @@ export default function RegisterPage() {
     }
   }
 
-  const handleGoogleQuickFill = () => {
-    setErrorMsg('')
-    if (!googleEmail.trim()) {
-      setGoogleEmail('nouvel.etudiant@gmail.com')
-    }
-  }
-
   const handleFirstYearSubmit = async (e) => {
     e.preventDefault()
     setErrorMsg('')
     setInfoMsg('')
 
     const cleanEmail = googleEmail.trim().toLowerCase()
-    if (!fyFirstName.trim() || !fyLastName.trim() || !cleanEmail || !fyBachelor) {
-      setErrorMsg('Veuillez remplir tous les champs et saisir votre adresse e-mail Google.')
+    if (!cleanEmail) {
+      setErrorMsg("Veuillez d'abord vous connecter avec votre e-mail Google.")
+      setStep('first_year_google')
+      return
+    }
+    if (!fyFirstName.trim() || !fyLastName.trim() || !fyBachelor) {
+      setErrorMsg('Veuillez remplir le prénom, le nom et la filière.')
       return
     }
 
@@ -130,6 +210,8 @@ export default function RegisterPage() {
       setFyFirstName('')
       setFyLastName('')
       setGoogleEmail('')
+      setGoogleVerified(false)
+      setStep('choose')
     } catch (err) {
       const data = err?.response?.data
       setErrorMsg(data?.detail || data?.error || "Erreur lors de l'envoi de la demande.")
@@ -172,7 +254,7 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {/* مرحله اول: سوال برای انتخاب سال اولی یا سال دوم/سوم */}
+        {/* انتخاب سال اولی یا سال دوم/سوم */}
         {step === 'choose' && (
           <div className="space-y-4">
             <p className="text-sm font-medium text-gray-800 text-center">
@@ -184,7 +266,7 @@ export default function RegisterPage() {
               onClick={() => {
                 setErrorMsg('')
                 setInfoMsg('')
-                setStep('first_year')
+                setStep('first_year_google')
               }}
               className="w-full p-4 rounded-xl border-2 border-blue-200 hover:border-blue-600 bg-blue-50/40 text-left transition"
             >
@@ -192,7 +274,7 @@ export default function RegisterPage() {
                 1re année (Nouvel étudiant — sans e-mail @hainaut-ea.be)
               </div>
               <div className="text-xs text-gray-600 mt-1">
-                Connexion via e-mail Google et envoi de la demande au modérateur pour recevoir e-mail, mot de passe et statut.
+                1. Connexion via Google puis 2. Saisie de vos informations et envoi au modérateur.
               </div>
             </button>
 
@@ -215,43 +297,68 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {/* فرم دانشجوی سال اولی با ایمیل گوگل */}
-        {step === 'first_year' && (
-          <form onSubmit={handleFirstYearSubmit} className="space-y-4">
+        {/* مرحله ۱ سال اولی: ورود با کلید گوگل */}
+        {step === 'first_year_google' && (
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">
-                Étudiant 1re année
+                1re année — Étape 1/2 : Connexion Google
               </span>
               <button
                 type="button"
                 onClick={() => setStep('choose')}
                 className="text-xs text-blue-600 hover:underline"
               >
-                ← Changer de choix
+                ← Retour
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleQuickFill}
-              className="w-full py-2.5 px-4 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 flex items-center justify-center gap-2 text-sm font-medium text-gray-800 transition"
-            >
-              <span className="font-bold text-blue-600">G</span>
-              <span>Continuer avec un compte Google</span>
-            </button>
+            {clientId ? (
+              <div className="flex justify-center py-2">
+                <div ref={googleButtonRef} />
+              </div>
+            ) : (
+              <form onSubmit={handleContinueGoogleStep} className="space-y-3">
+                <p className="text-xs text-gray-600">
+                  Saisissez votre adresse e-mail Google pour continuer vers le formulaire d'inscription :
+                </p>
+                <input
+                  type="email"
+                  value={googleEmail}
+                  onChange={(e) => setGoogleEmail(e.target.value)}
+                  placeholder="prenom.nom@gmail.com"
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition"
+                >
+                  Continuer avec Google
+                </button>
+              </form>
+            )}
+          </div>
+        )}
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Adresse e-mail Google / personnelle
-              </label>
-              <input
-                type="email"
-                value={googleEmail}
-                onChange={(e) => setGoogleEmail(e.target.value)}
-                placeholder="etudiant@gmail.com"
-                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
+        {/* مرحله ۲ سال اولی: تکمیل مشخصات پس از ورود گوگل */}
+        {step === 'first_year_details' && (
+          <form onSubmit={handleFirstYearSubmit} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-800">
+                1re année — Étape 2/2 : Informations
+              </span>
+              <button
+                type="button"
+                onClick={() => setStep('first_year_google')}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                ← Changer d'e-mail Google
+              </button>
+            </div>
+
+            <div className="p-3 rounded-lg bg-gray-50 border text-xs text-gray-700">
+              E-mail Google {googleVerified ? 'sélectionné' : ''} : <strong>{googleEmail}</strong>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
