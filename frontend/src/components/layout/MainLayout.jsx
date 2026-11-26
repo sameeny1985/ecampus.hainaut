@@ -50,7 +50,21 @@ export default function MainLayout({ children }) {
       setNotifications(notifications.map(n => n.id === notif.id ? { ...n, is_read: true } : n))
     }
     setShowDropdown(false)
-    navigate(notif.link || '/messages')
+
+    let targetLink = notif.link || '/messages'
+    const textSample = `${notif.title || ''} ${notif.message || ''} ${targetLink}`.toLowerCase()
+    if (
+      targetLink.includes('/registration-requests') &&
+      (textSample.includes('2e') ||
+        textSample.includes('3e') ||
+        textSample.includes('2eme') ||
+        textSample.includes('3eme')) &&
+      !targetLink.includes('tab=')
+    ) {
+      targetLink = `${targetLink}?tab=upper`
+    }
+
+    navigate(targetLink)
   }
 
   const markAllRead = async () => {
