@@ -6,6 +6,7 @@ import RegisterPage from './pages/auth/RegisterPage'
 import StudentDashboard from './pages/dashboards/StudentDashboard'
 import TeacherDashboard from './pages/dashboards/TeacherDashboard'
 import StaffDashboard from './pages/dashboards/StaffDashboard'
+import ModeratorRequestsPage from './pages/ModeratorRequestsPage'
 import MessagingPage from './pages/MessagingPage'
 import MainLayout from './components/layout/MainLayout'
 import MajorsPage from './pages/courses/MajorsPage'
@@ -36,6 +37,11 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/registration-requests" element={
+            <PrivateRoute>
+              <MainLayout><ModeratorRequestsPage /></MainLayout>
+            </PrivateRoute>
+          } />
           <Route path="/courses" element={
             <PrivateRoute>
               <MainLayout><MajorsPage /></MainLayout>
