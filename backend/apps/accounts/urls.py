@@ -15,6 +15,7 @@ urlpatterns = [
     path('search/', views.SearchUsersView.as_view(), name='search-users'),
     path('first-year-requests/', views.FirstYearRegistrationRequestView.as_view(), name='first-year-requests'),
     path('registration-requests/', views.ModeratorRegistrationRequestListView.as_view(), name='registration-requests'),
+    path('upper-year-register/', views.UpperYearRegistrationView.as_view(), name='upper-year-register'),
     path('registration-requests/<uuid:req_id>/decision/', views.ModeratorRegistrationRequestDecisionView.as_view(), name='registration-request-decision'),
     path('users/', views.StaffUserListView.as_view(), name='staff-user-list'),
     path('delete-account/', views.DeleteAccountView.as_view(), name='delete-account'),
