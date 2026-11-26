@@ -10,6 +10,15 @@ const isUpperYearValue = (val) => {
   return ['2eme', '3eme', '2e', '3e', '2', '3', '2em', '3em', '2ieme', '3ieme'].includes(normalized)
 }
 
+const getYearField = (item) =>
+  item?.academic_year ||
+  item?.year ||
+  item?.study_year ||
+  item?.niveau ||
+  item?.profile?.academic_year ||
+  item?.profile?.year ||
+  ''
+
 export default function ModeratorRequestsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
@@ -24,6 +33,7 @@ export default function ModeratorRequestsPage() {
 
   const [activeTab, setActiveTab] = useState(getDesiredTab)
   const [requests, setRequests] = useState([])
+  const [upperUsers, setUpperUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [submittingId, setSubmittingId] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
@@ -39,12 +49,46 @@ export default function ModeratorRequestsPage() {
     setSearchParams({ tab })
   }
 
-  const loadRequests = async () => {
+  const fetchUpperYearUsers = async () => {
+    const candidateEndpoints = [
+      '/auth/users/',
+      '/auth/students/',
+      '/users/',
+    ]
+
+    for (const endpoint of candidateEndpoints) {
+      try {
+        const res = await api.get(endpoint)
+        const raw = res?.data
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.results)
+          ? raw.results
+          : Array.isArray(raw?.users)
+          ? raw.users
+          : []
+
+        if (list.length > 0) {
+          return list.filter((u) => isUpperYearValue(getYearField(u)))
+        }
+      } catch {
+        // به اندپوینت بعدی می‌رود تا خطای 404 باعث توقف نشود
+      }
+    }
+    return []
+  }
+
+  const loadAll = async () => {
     setLoading(true)
     setErrorMsg('')
+
     try {
-      const res = await api.get('/auth/registration-requests/')
-      const raw = res?.data
+      const [reqRes, upperList] = await Promise.all([
+        api.get('/auth/registration-requests/').catch(() => ({ data: [] })),
+        fetchUpperYearUsers(),
+      ])
+
+      const raw = reqRes?.data
       const list = Array.isArray(raw)
         ? raw
         : Array.isArray(raw?.results)
@@ -54,6 +98,7 @@ export default function ModeratorRequestsPage() {
         : []
 
       setRequests(list)
+      setUpperUsers(upperList)
 
       const initialForms = {}
       list.forEach((r) => {
@@ -68,7 +113,6 @@ export default function ModeratorRequestsPage() {
       })
       setFormsById(initialForms)
     } catch (err) {
-      setRequests([])
       setErrorMsg(err?.response?.data?.error || 'Erreur lors du chargement des demandes.')
     } finally {
       setLoading(false)
@@ -76,7 +120,7 @@ export default function ModeratorRequestsPage() {
   }
 
   useEffect(() => {
-    loadRequests()
+    loadAll()
   }, [])
 
   const updateField = (id, field, value) => {
@@ -94,7 +138,7 @@ export default function ModeratorRequestsPage() {
     setSuccessMsg('')
     setSubmittingId(reqItem.id)
 
-    const isUpperYear = isUpperYearValue(reqItem.academic_year)
+    const isUpperYear = isUpperYearValue(getYearField(reqItem))
     const currentForm = formsById[reqItem.id] || {}
 
     const payload = isUpperYear
@@ -112,7 +156,7 @@ export default function ModeratorRequestsPage() {
     try {
       const res = await api.post(`/auth/registration-requests/${reqItem.id}/decision/`, payload)
       setSuccessMsg(res.data?.message || 'Décision enregistrée.')
-      await loadRequests()
+      await loadAll()
     } catch (err) {
       setErrorMsg(err?.response?.data?.error || 'Erreur lors de la mise à jour de la demande.')
     } finally {
@@ -121,16 +165,61 @@ export default function ModeratorRequestsPage() {
   }
 
   const safeList = Array.isArray(requests) ? requests : []
-  const upperYearRequests = safeList.filter((r) => isUpperYearValue(r?.academic_year))
-  const firstYearRequests = safeList.filter((r) => !isUpperYearValue(r?.academic_year))
-  const visibleRequests = activeTab === 'upper' ? upperYearRequests : firstYearRequests
+  const upperFromRequests = safeList.filter((r) => isUpperYearValue(getYearField(r)))
+  const firstYearRequests = safeList.filter((r) => !isUpperYearValue(getYearField(r)))
+
+  const combinedUpperItems = [
+    ...upperFromRequests.map((r) => ({ kind: 'request', data: r })),
+    ...upperUsers
+      .filter((u) => {
+        const uEmail = String(u?.email || '').toLowerCase()
+        return !upperFromRequests.some((r) => String(r?.personal_email || '').toLowerCase() === uEmail)
+      })
+      .map((u) => ({ kind: 'user', data: u })),
+  ]
+
+  const renderUpperUserCard = (u) => {
+    const rawYear = String(getYearField(u) || '').toLowerCase()
+    const yearLabel = rawYear.includes('3') ? '3e année' : '2e année'
+    const fullName =
+      u.full_name ||
+      [u.first_name, u.last_name].filter(Boolean).join(' ') ||
+      u.username ||
+      u.email
+
+    return (
+      <div key={`user-${u.id || u.email}`} className="bg-white rounded-xl border p-5 space-y-2 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-gray-900">{fullName}</span>
+              {(u.bachelor || u.major_name || u.profile?.bachelor) && (
+                <span className="text-blue-700 font-semibold">
+                  — {u.bachelor || u.major_name || u.profile?.bachelor}
+                </span>
+              )}
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700">
+                {yearLabel}
+              </span>
+            </div>
+            <div className="text-xs text-gray-600 mt-1">
+              Compte : <strong>{u.email || '—'}</strong>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+            Inscrit (2e / 3e année)
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   const renderRequestCard = (r) => {
     const f = formsById[r.id] || {}
-    const isUpperYear = isUpperYearValue(r.academic_year)
+    const isUpperYear = isUpperYearValue(getYearField(r))
     const isBusy = submittingId === r.id
 
-    const normYear = String(r.academic_year || '').toLowerCase()
+    const normYear = String(getYearField(r) || '').toLowerCase()
     const yearLabel = normYear.includes('3')
       ? '3e année'
       : normYear.includes('2')
@@ -152,7 +241,7 @@ export default function ModeratorRequestsPage() {
         : 'En attente'
 
     return (
-      <div key={r.id} className="bg-white rounded-xl border p-5 space-y-4 shadow-sm">
+      <div key={`req-${r.id}`} className="bg-white rounded-xl border p-5 space-y-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -260,7 +349,7 @@ export default function ModeratorRequestsPage() {
         </div>
         <button
           type="button"
-          onClick={loadRequests}
+          onClick={loadAll}
           className="px-3.5 py-2 rounded-lg border bg-white hover:bg-gray-50 text-xs sm:text-sm font-medium text-gray-700"
         >
           Actualiser
@@ -277,7 +366,7 @@ export default function ModeratorRequestsPage() {
               : 'bg-white border text-gray-700 hover:bg-gray-50'
           }`}
         >
-          Demandes (2e / 3e année) ({upperYearRequests.length})
+          Demandes (2e / 3e année) ({combinedUpperItems.length})
         </button>
         <button
           type="button"
@@ -306,14 +395,26 @@ export default function ModeratorRequestsPage() {
 
       {loading ? (
         <div className="text-sm text-gray-500">Chargement...</div>
-      ) : visibleRequests.length === 0 ? (
+      ) : activeTab === 'upper' ? (
+        combinedUpperItems.length === 0 ? (
+          <div className="bg-white rounded-xl border p-6 text-center text-sm text-gray-500">
+            Aucune demande pour la 2e ou 3e année pour le moment.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {combinedUpperItems.map((item) =>
+              item.kind === 'request'
+                ? renderRequestCard(item.data)
+                : renderUpperUserCard(item.data)
+            )}
+          </div>
+        )
+      ) : firstYearRequests.length === 0 ? (
         <div className="bg-white rounded-xl border p-6 text-center text-sm text-gray-500">
-          {activeTab === 'upper'
-            ? 'Aucune demande pour la 2e ou 3e année pour le moment.'
-            : 'Aucune demande pour la 1re année pour le moment.'}
+          Aucune demande pour la 1re année pour le moment.
         </div>
       ) : (
-        <div className="space-y-4">{visibleRequests.map(renderRequestCard)}</div>
+        <div className="space-y-4">{firstYearRequests.map(renderRequestCard)}</div>
       )}
     </div>
   )
