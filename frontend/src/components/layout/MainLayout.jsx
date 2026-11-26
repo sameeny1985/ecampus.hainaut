@@ -88,9 +88,20 @@ export default function MainLayout({ children }) {
               </Link>
             )}
             {canManageRequests && (
-              <Link to="/registration-requests" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
-                Demandes (1re année)
-              </Link>
+              <>
+                <Link
+                  to="/registration-requests?tab=first"
+                  className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap"
+                >
+                  Demandes (1re année)
+                </Link>
+                <Link
+                  to="/registration-requests?tab=upper"
+                  className="text-xs sm:text-sm font-medium text-indigo-700 hover:text-indigo-900 shrink-0 whitespace-nowrap"
+                >
+                  Demandes (2e/3e année)
+                </Link>
+              </>
             )}
             {isModerator && (
               <button
