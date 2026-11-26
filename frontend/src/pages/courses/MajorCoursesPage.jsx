@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getMajors, getCourses, joinCourse, leaveCourse } from '../../services/communityService'
+import api from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 
 const YEARS = [
@@ -19,11 +20,33 @@ export default function MajorCoursesPage() {
   const [joining, setJoining] = useState(null)
   const [leaving, setLeaving] = useState(null)
   const [message, setMessage] = useState(null)
+  const [hasPendingUpperYear, setHasPendingUpperYear] = useState(false)
 
   const extractList = (data) => {
     if (Array.isArray(data)) return data
     if (Array.isArray(data?.results)) return data.results
     return []
+  }
+
+  const checkPendingUpperYearRequest = async () => {
+    if (!user || user.role !== 'student') {
+      setHasPendingUpperYear(false)
+      return false
+    }
+    try {
+      const res = await api.get('/auth/moderator/registration-requests/')
+      const list = extractList(res.data)
+      const pending = list.some(
+        r =>
+          ['2eme', '3eme'].includes(r.academic_year) &&
+          r.status === 'pending' &&
+          (r.personal_email || '').toLowerCase() === (user.email || '').toLowerCase()
+      )
+      setHasPendingUpperYear(pending)
+      return pending
+    } catch {
+      return false
+    }
   }
 
   useEffect(() => {
@@ -37,6 +60,10 @@ export default function MajorCoursesPage() {
   }, [majorId])
 
   useEffect(() => {
+    checkPendingUpperYearRequest()
+  }, [user?.id])
+
+  useEffect(() => {
     if (!majorId) return
     setLoading(true)
     getCourses({ major: majorId, year })
@@ -46,6 +73,15 @@ export default function MajorCoursesPage() {
   }, [majorId, year])
 
   const handleJoin = async (courseId) => {
+    const isPending = await checkPendingUpperYearRequest()
+    if (isPending) {
+      setMessage({
+        type: 'error',
+        text: "Votre demande d'inscription (2e/3e année) est en attente de validation par le modérateur avant de pouvoir vous inscrire aux cours."
+      })
+      return
+    }
+
     setJoining(courseId)
     setMessage(null)
     try {
@@ -190,6 +226,10 @@ export default function MajorCoursesPage() {
                       </button>
                     )}
                   </div>
+                ) : hasPendingUpperYear ? (
+                  <span className="px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl">
+                    En attente de validation
+                  </span>
                 ) : (
                   <button
                     onClick={() => handleJoin(course.id)}
