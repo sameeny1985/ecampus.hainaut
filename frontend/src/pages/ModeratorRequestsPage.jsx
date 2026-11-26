@@ -1,14 +1,30 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 
 export default function ModeratorRequestsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') === 'first' ? 'first' : 'upper'
+  const [activeTab, setActiveTab] = useState(initialTab) // 'upper' | 'first'
+
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [submittingId, setSubmittingId] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
-
   const [formsById, setFormsById] = useState({})
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam === 'first' || tabParam === 'upper') {
+      setActiveTab(tabParam)
+    }
+  }, [searchParams])
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab)
+    setSearchParams({ tab })
+  }
 
   const loadRequests = () => {
     setLoading(true)
@@ -56,22 +72,17 @@ export default function ModeratorRequestsPage() {
     const isUpperYear = ['2eme', '3eme'].includes(reqItem.academic_year)
     const currentForm = formsById[reqItem.id] || {}
 
-    const payload = {
-      action,
-      moderator_note: currentForm.moderator_note || '',
-    }
-
-    if (action === 'approve') {
-      if (isUpperYear) {
-        payload.assigned_institutional_email =
-          currentForm.assigned_institutional_email ||
-          reqItem.assigned_institutional_email ||
-          reqItem.personal_email
-      } else {
-        payload.assigned_institutional_email = currentForm.assigned_institutional_email || ''
-        payload.assigned_temporary_password = currentForm.assigned_temporary_password || ''
-      }
-    }
+    const payload = isUpperYear
+      ? {
+          action,
+          moderator_note: currentForm.moderator_note || '',
+        }
+      : {
+          action,
+          assigned_institutional_email: currentForm.assigned_institutional_email || '',
+          assigned_temporary_password: currentForm.assigned_temporary_password || '',
+          moderator_note: currentForm.moderator_note || '',
+        }
 
     try {
       const res = await api.post(`/auth/registration-requests/${reqItem.id}/decision/`, payload)
@@ -86,6 +97,7 @@ export default function ModeratorRequestsPage() {
 
   const upperYearRequests = requests.filter((r) => ['2eme', '3eme'].includes(r.academic_year))
   const firstYearRequests = requests.filter((r) => !['2eme', '3eme'].includes(r.academic_year))
+  const visibleRequests = activeTab === 'upper' ? upperYearRequests : firstYearRequests
 
   const renderRequestCard = (r) => {
     const f = formsById[r.id] || {}
@@ -205,7 +217,7 @@ export default function ModeratorRequestsPage() {
             {isBusy
               ? 'Traitement...'
               : isUpperYear
-              ? `Approuver (${yearLabel})`
+              ? 'Approuver'
               : 'Approuver et envoyer identifiants'}
           </button>
         </div>
@@ -214,14 +226,14 @@ export default function ModeratorRequestsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             Validation des inscriptions
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            Validez les demandes d&apos;inscription pour la 2e / 3e année et la 1re année.
+            Gérez les demandes d&apos;inscription pour la 2e / 3e année et la 1re année.
           </p>
         </div>
         <button
@@ -230,6 +242,31 @@ export default function ModeratorRequestsPage() {
           className="px-3.5 py-2 rounded-lg border bg-white hover:bg-gray-50 text-xs sm:text-sm font-medium text-gray-700"
         >
           Actualiser
+        </button>
+      </div>
+
+      <div className="flex gap-2 border-b pb-3">
+        <button
+          type="button"
+          onClick={() => handleTabChange('upper')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+            activeTab === 'upper'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-white border text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          Demandes (2e / 3e année) ({upperYearRequests.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange('first')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+            activeTab === 'first'
+              ? 'bg-blue-600 text-white'
+              : 'bg-white border text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          Demandes (1re année) ({firstYearRequests.length})
         </button>
       </div>
 
@@ -247,38 +284,14 @@ export default function ModeratorRequestsPage() {
 
       {loading ? (
         <div className="text-sm text-gray-500">Chargement...</div>
-      ) : requests.length === 0 ? (
+      ) : visibleRequests.length === 0 ? (
         <div className="bg-white rounded-xl border p-6 text-center text-sm text-gray-500">
-          Aucune demande d&apos;inscription pour le moment.
+          {activeTab === 'upper'
+            ? 'Aucune demande pour la 2e ou 3e année pour le moment.'
+            : 'Aucune demande pour la 1re année pour le moment.'}
         </div>
       ) : (
-        <>
-          <section className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">
-              2e et 3e années ({upperYearRequests.length})
-            </h2>
-            {upperYearRequests.length === 0 ? (
-              <div className="bg-white rounded-xl border p-5 text-sm text-gray-500">
-                Aucune demande pour la 2e ou 3e année.
-              </div>
-            ) : (
-              <div className="space-y-4">{upperYearRequests.map(renderRequestCard)}</div>
-            )}
-          </section>
-
-          <section className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">
-              1re année ({firstYearRequests.length})
-            </h2>
-            {firstYearRequests.length === 0 ? (
-              <div className="bg-white rounded-xl border p-5 text-sm text-gray-500">
-                Aucune demande pour la 1re année.
-              </div>
-            ) : (
-              <div className="space-y-4">{firstYearRequests.map(renderRequestCard)}</div>
-            )}
-          </section>
-        </>
+        <div className="space-y-4">{visibleRequests.map(renderRequestCard)}</div>
       )}
     </div>
   )
