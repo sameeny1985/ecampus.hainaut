@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../contexts/AuthContext'
 import api from '../../services/api'
 
 const BACHELOR_OPTIONS = [
@@ -29,21 +30,24 @@ function decodeJwtPayload(token) {
 
 export default function RegisterPage() {
   const navigate = useNavigate()
+  const { user, login } = useAuth()
   const googleButtonRef = useRef(null)
 
-  // 'choose' | 'first_year_google' | 'first_year_details' | 'upper_year'
+  // 'choose' | 'first_year_google' | 'first_year_details' | 'upper_year_login' | 'upper_year_form'
   const [step, setStep] = useState('choose')
 
-  // فرم سال دوم و سوم (با ایمیل دانشگاهی)
+  // ورود با ایمیل و پسورد موجود برای سال دوم / سوم
+  const [existingEmail, setExistingEmail] = useState('')
+  const [existingPassword, setExistingPassword] = useState('')
+  const [loggingInUpper, setLoggingInUpper] = useState(false)
+
+  // فرم ثبت‌نام سال دوم و سوم پس از ورود
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
-  const [email, setEmail] = useState('')
   const [academicYear, setAcademicYear] = useState('2eme')
   const [bachelor, setBachelor] = useState(BACHELOR_OPTIONS[0])
-  const [password, setPassword] = useState('')
-  const [passwordConfirm, setPasswordConfirm] = useState('')
-  const [acceptTerms, setAcceptTerms] = useState(false)
-  const [acceptPrivacy, setAcceptPrivacy] = useState(false)
+  const [acceptTerms, setAcceptTerms] = useState(true)
+  const [acceptPrivacy, setAcceptPrivacy] = useState(true)
 
   // فرم دانشجوی سال اول: مرحله ۱ ایمیل گوگل، مرحله ۲ تکمیل مشخصات
   const [fyFirstName, setFyFirstName] = useState('')
@@ -57,6 +61,14 @@ export default function RegisterPage() {
   const [infoMsg, setInfoMsg] = useState('')
 
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+
+  useEffect(() => {
+    if (user) {
+      if (user.email && !existingEmail) setExistingEmail(user.email)
+      if (user.first_name && !firstName) setFirstName(user.first_name)
+      if (user.last_name && !lastName) setLastName(user.last_name)
+    }
+  }, [user, existingEmail, firstName, lastName])
 
   useEffect(() => {
     if (step !== 'first_year_google' || !clientId || !googleButtonRef.current) return
@@ -120,24 +132,40 @@ export default function RegisterPage() {
     setStep('first_year_details')
   }
 
-  const handleUpperYearSubmit = async (e) => {
+  const handleUpperYearLogin = async (e) => {
     e.preventDefault()
     setErrorMsg('')
     setInfoMsg('')
 
-    const normalizedEmail = email.trim().toLowerCase()
-    if (!normalizedEmail.endsWith('@hainaut-ea.be')) {
-      setErrorMsg("L'adresse e-mail institutionnelle doit se terminer par @hainaut-ea.be.")
+    const cleanEmail = existingEmail.trim().toLowerCase()
+    if (!cleanEmail || !existingPassword) {
+      setErrorMsg('Veuillez saisir votre e-mail et votre mot de passe existants.')
       return
     }
-    if (password.length < 8) {
-      setErrorMsg('Le mot de passe doit contenir au moins 8 caractères.')
-      return
+
+    setLoggingInUpper(true)
+    try {
+      const loggedInUser = await login(cleanEmail, existingPassword)
+      if (loggedInUser?.first_name) setFirstName(loggedInUser.first_name)
+      if (loggedInUser?.last_name) setLastName(loggedInUser.last_name)
+      setExistingPassword('')
+      setStep('upper_year_form')
+    } catch (err) {
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.non_field_errors?.[0] ||
+        'Identifiants existants incorrects.'
+      setErrorMsg(msg)
+    } finally {
+      setLoggingInUpper(false)
     }
-    if (password !== passwordConfirm) {
-      setErrorMsg('Les mots de passe ne correspondent pas.')
-      return
-    }
+  }
+
+  const handleUpperYearRegisterSubmit = async (e) => {
+    e.preventDefault()
+    setErrorMsg('')
+    setInfoMsg('')
+
     if (!acceptTerms || !acceptPrivacy) {
       setErrorMsg("Veuillez accepter les conditions d'utilisation et la politique de confidentialité.")
       return
@@ -145,16 +173,11 @@ export default function RegisterPage() {
 
     setSubmitting(true)
     try {
-      const res = await api.post('/auth/register/', {
+      const res = await api.post('/auth/upper-year-register/', {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        email: normalizedEmail,
         academic_year: academicYear,
         bachelor,
-        password,
-        password_confirm: passwordConfirm,
-        accept_terms: acceptTerms,
-        accept_privacy: acceptPrivacy,
       })
 
       if (res.data?.access) {
@@ -162,18 +185,13 @@ export default function RegisterPage() {
         if (res.data.refresh) {
           localStorage.setItem('refresh_token', res.data.refresh)
         }
-        window.location.href = '#/dashboard'
-        window.location.reload()
-      } else {
-        setInfoMsg(res.data?.message || 'Inscription enregistrée.')
       }
+
+      window.location.href = '#/dashboard'
+      window.location.reload()
     } catch (err) {
       const data = err?.response?.data
-      const firstFieldError =
-        data && typeof data === 'object'
-          ? Object.values(data).flat().find((v) => typeof v === 'string')
-          : null
-      setErrorMsg(data?.detail || firstFieldError || "Erreur lors de l'inscription.")
+      setErrorMsg(data?.error || data?.detail || "Erreur lors de l'inscription.")
     } finally {
       setSubmitting(false)
     }
@@ -258,7 +276,7 @@ export default function RegisterPage() {
         {step === 'choose' && (
           <div className="space-y-4">
             <p className="text-sm font-medium text-gray-800 text-center">
-              Êtes-vous étudiant de 1re année (sans e-mail universitaire) ou de 2e / 3e année ?
+              Êtes-vous étudiant de 1re année ou de 2e / 3e année ?
             </p>
 
             <button
@@ -283,15 +301,22 @@ export default function RegisterPage() {
               onClick={() => {
                 setErrorMsg('')
                 setInfoMsg('')
-                setStep('upper_year')
+                if (user) {
+                  setExistingEmail(user.email || '')
+                  setFirstName(user.first_name || '')
+                  setLastName(user.last_name || '')
+                  setStep('upper_year_form')
+                } else {
+                  setStep('upper_year_login')
+                }
               }}
               className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-600 bg-white text-left transition"
             >
               <div className="font-bold text-gray-900 text-sm sm:text-base">
-                2e ou 3e année (Avec e-mail @hainaut-ea.be existant)
+                2e ou 3e année (Avec e-mail et mot de passe existants)
               </div>
               <div className="text-xs text-gray-600 mt-1">
-                Inscription directe avec votre adresse institutionnelle et choix de l'année et de la filière.
+                1. Connexion avec votre e-mail et mot de passe existants puis 2. Inscription en 2e ou 3e année.
               </div>
             </button>
           </div>
@@ -409,12 +434,66 @@ export default function RegisterPage() {
           </form>
         )}
 
-        {/* فرم دانشجوی سال دوم و سوم با ایمیل دانشگاهی */}
-        {step === 'upper_year' && (
-          <form onSubmit={handleUpperYearSubmit} className="space-y-4">
+        {/* مرحله ۱ سال دوم / سوم: ورود با ایمیل و پسورد موجود */}
+        {step === 'upper_year_login' && (
+          <form onSubmit={handleUpperYearLogin} className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">
-                Étudiant 2e / 3e année
+                2e / 3e année — Étape 1/2 : Connexion existante
+              </span>
+              <button
+                type="button"
+                onClick={() => setStep('choose')}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                ← Retour
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                E-mail existant
+              </label>
+              <input
+                type="email"
+                value={existingEmail}
+                onChange={(e) => setExistingEmail(e.target.value)}
+                placeholder="prenom.nom@hainaut-ea.be"
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Mot de passe existant
+              </label>
+              <input
+                type="password"
+                value={existingPassword}
+                onChange={(e) => setExistingPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loggingInUpper}
+              className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold text-sm transition"
+            >
+              {loggingInUpper ? 'Connexion...' : 'Se connecter et continuer'}
+            </button>
+          </form>
+        )}
+
+        {/* مرحله ۲ سال دوم / سوم: فرم ثبت‌نام در سال دوم یا سوم پس از ورود */}
+        {step === 'upper_year_form' && (
+          <form onSubmit={handleUpperYearRegisterSubmit} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-800">
+                2e / 3e année — Étape 2/2 : Inscription
               </span>
               <button
                 type="button"
@@ -423,6 +502,10 @@ export default function RegisterPage() {
               >
                 ← Changer de choix
               </button>
+            </div>
+
+            <div className="p-3 rounded-lg bg-gray-50 border text-xs text-gray-700">
+              Compte connecté : <strong>{user?.email || existingEmail}</strong>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -446,20 +529,6 @@ export default function RegisterPage() {
                   required
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                E-mail institutionnel (@hainaut-ea.be)
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="prenom.nom@hainaut-ea.be"
-                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -490,30 +559,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Mot de passe</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 8 caractères"
-                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Confirmer le mot de passe</label>
-              <input
-                type="password"
-                value={passwordConfirm}
-                onChange={(e) => setPasswordConfirm(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
             <div className="space-y-2 pt-1">
               <label className="flex items-start gap-2 text-xs text-gray-600 cursor-pointer">
                 <input
@@ -542,7 +587,7 @@ export default function RegisterPage() {
               disabled={submitting}
               className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold text-sm transition"
             >
-              {submitting ? 'Création en cours...' : "S'inscrire"}
+              {submitting ? 'Enregistrement...' : 'Valider mon inscription'}
             </button>
           </form>
         )}
