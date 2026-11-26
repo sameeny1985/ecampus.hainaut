@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../../services/api'
+import ProfileMenu from './ProfileMenu'
 
 export default function MainLayout({ children }) {
   const { user, logout } = useAuth()
@@ -73,7 +74,7 @@ export default function MainLayout({ children }) {
               </Link>
             )}
           </div>
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0 max-w-full">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 max-w-full">
             <div className="relative shrink-0">
               <button
                 onClick={handleBellClick}
@@ -123,7 +124,7 @@ export default function MainLayout({ children }) {
               )}
             </div>
 
-            <span className="hidden md:inline text-sm text-gray-600 truncate max-w-[160px]">{user?.first_name} {user?.last_name}</span>
+            <ProfileMenu />
             <button onClick={handleLogout} className="text-xs sm:text-sm text-red-600 hover:underline shrink-0 whitespace-nowrap">Déconnexion</button>
           </div>
         </div>
