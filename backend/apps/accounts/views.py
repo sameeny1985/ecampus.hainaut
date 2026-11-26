@@ -5,7 +5,7 @@ from rest_framework import generics, status, permissions, views
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
-from django.contrib.auth import logout
+from django.contrib.auth import authenticate, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
@@ -138,6 +138,75 @@ class ChangePasswordView(views.APIView):
             {'detail': 'Mot de passe mis à jour avec succès.'},
             status=status.HTTP_200_OK
         )
+
+
+class UpperYearRegistrationView(views.APIView):
+    """ثبت‌نام سال دوم یا سوم پس از ورود با ایمیل و پسورد موجود"""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        academic_year = (request.data.get('academic_year') or '2eme').strip()
+        bachelor = (request.data.get('bachelor') or '').strip()
+        first_name = (request.data.get('first_name') or '').strip()
+        last_name = (request.data.get('last_name') or '').strip()
+
+        if academic_year not in ('2eme', '3eme'):
+            return Response(
+                {'error': 'Année invalide (2eme ou 3eme uniquement).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not bachelor:
+            return Response(
+                {'error': 'Veuillez sélectionner une filière.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = None
+        if request.user and request.user.is_authenticated:
+            user = request.user
+        else:
+            email = (request.data.get('email') or '').strip().lower()
+            password = request.data.get('password') or ''
+            if not email or not password:
+                return Response(
+                    {'error': 'Veuillez vous connecter avec votre e-mail et mot de passe existants.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user = authenticate(request, email=email, password=password)
+            if not user:
+                return Response(
+                    {'error': 'E-mail ou mot de passe existant incorrect.'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+        if first_name:
+            user.first_name = first_name
+        if last_name:
+            user.last_name = last_name
+        user.role = User.Role.STUDENT
+        user.status = User.AccountStatus.ACTIVE
+        user.is_active = True
+        user.privacy_accepted = True
+        user.terms_accepted = True
+        if not user.privacy_accepted_at:
+            user.privacy_accepted_at = timezone.now()
+        user.save()
+
+        profile, _ = Profile.objects.get_or_create(user=user)
+        profile.bachelor = bachelor
+        existing_courses = profile.courses if isinstance(profile.courses, list) else []
+        filtered_courses = [c for c in existing_courses if not str(c).startswith('Année:')]
+        profile.courses = [f"Année: {academic_year}", *filtered_courses]
+        profile.save()
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'user': UserSerializer(user).data,
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'message': f"Inscription en {'2e année' if academic_year == '2eme' else '3e année'} enregistrée avec succès !"
+        }, status=status.HTTP_200_OK)
 
 
 class FirstYearRegistrationRequestView(views.APIView):
