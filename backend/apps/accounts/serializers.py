@@ -4,6 +4,7 @@ Serializers for accounts application.
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.conf import settings
+from django.utils import timezone
 from .models import User, Profile, BlockedUser, CookieConsent
 
 
@@ -42,27 +43,39 @@ class UserPublicSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8, style={'input_type': 'password'})
     password_confirm = serializers.CharField(write_only=True, style={'input_type': 'password'})
+    role = serializers.ChoiceField(
+        choices=[
+            (User.Role.STUDENT, 'Étudiant'),
+            (User.Role.TEACHER, 'Enseignant'),
+        ],
+        default=User.Role.STUDENT,
+        required=False,
+    )
+    bachelor = serializers.CharField(max_length=100, required=False, allow_blank=True, write_only=True)
     accept_terms = serializers.BooleanField(write_only=True)
     accept_privacy = serializers.BooleanField(write_only=True)
 
     class Meta:
         model = User
         fields = [
-            'email', 'first_name', 'last_name', 'password', 'password_confirm',
-            'accept_terms', 'accept_privacy'
+            'email', 'first_name', 'last_name', 'role', 'bachelor',
+            'password', 'password_confirm', 'accept_terms', 'accept_privacy'
         ]
 
     def validate_email(self, value):
-        domain = value.split('@')[-1].lower()
+        normalized = (value or '').strip().lower()
+        if '@' not in normalized:
+            raise serializers.ValidationError('Adresse e-mail invalide.')
+        domain = normalized.split('@')[-1]
         allowed = [d.strip().lower() for d in settings.INSTITUTIONAL_EMAIL_DOMAINS]
         if domain not in allowed:
             raise serializers.ValidationError(
                 f'Seules les adresses institutionnelles sont autorisées '
                 f'({", ".join(allowed)}).'
             )
-        if User.objects.filter(email__iexact=value).exists():
+        if User.objects.filter(email__iexact=normalized).exists():
             raise serializers.ValidationError('Un compte existe déjà avec cette adresse.')
-        return value.lower()
+        return normalized
 
     def validate(self, data):
         if data['password'] != data['password_confirm']:
@@ -77,20 +90,23 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password_confirm')
         validated_data.pop('accept_terms')
         validated_data.pop('accept_privacy')
+        bachelor = (validated_data.pop('bachelor', '') or '').strip()
         password = validated_data.pop('password')
+        role = validated_data.get('role', User.Role.STUDENT)
+
+        is_teacher_request = role == User.Role.TEACHER
         user = User.objects.create_user(
             **validated_data,
+            password=password,
+            role=role,
+            status=User.AccountStatus.PENDING if is_teacher_request else User.AccountStatus.ACTIVE,
+            is_active=not is_teacher_request,
             privacy_accepted=True,
             terms_accepted=True,
-            privacy_accepted_at=timezone.now()
+            privacy_accepted_at=timezone.now(),
         )
-        user.set_password(password)
-        user.save()
-        Profile.objects.create(user=user)
+        Profile.objects.create(user=user, bachelor=bachelor)
         return user
-
-
-from django.utils import timezone
 
 
 class LoginSerializer(serializers.Serializer):
@@ -98,8 +114,7 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(style={'input_type': 'password'})
 
     def validate(self, data):
-        from django.contrib.auth import authenticate
-        email = data.get('email', '').strip()
+        email = (data.get('email') or '').strip().lower()
         password = data.get('password', '')
         if not email or not password:
             raise serializers.ValidationError('Email et mot de passe requis.')
@@ -107,7 +122,9 @@ class LoginSerializer(serializers.Serializer):
         user = authenticate(username=email, password=password)
         if user is None:
             raise serializers.ValidationError('Identifiants incorrects.')
-        if not user.is_active or getattr(user, 'status', None) == 'disabled':
+        if getattr(user, 'status', None) == User.AccountStatus.PENDING:
+            raise serializers.ValidationError('Votre compte est en attente de validation par l\'administration.')
+        if not user.is_active or getattr(user, 'status', None) == User.AccountStatus.DISABLED:
             raise serializers.ValidationError('Ce compte est désactivé.')
         data['user'] = user
         return data
