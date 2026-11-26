@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/auth/LoginPage'
+import RegisterPage from './pages/auth/RegisterPage'
 import StudentDashboard from './pages/dashboards/StudentDashboard'
 import TeacherDashboard from './pages/dashboards/TeacherDashboard'
 import StaffDashboard from './pages/dashboards/StaffDashboard'
@@ -34,6 +35,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/courses" element={
             <PrivateRoute>
               <MainLayout><MajorsPage /></MainLayout>
