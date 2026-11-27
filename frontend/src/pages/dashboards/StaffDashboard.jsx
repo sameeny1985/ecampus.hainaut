@@ -7,8 +7,9 @@ import api from '../../services/api'
 const STATUS_LABELS = {
   enrolled: { label: 'Inscrit', cls: 'bg-gray-100 text-gray-700' },
   in_progress: { label: 'En cours', cls: 'bg-blue-100 text-blue-700' },
+  completed: { label: 'Terminé', cls: 'bg-teal-100 text-teal-800' },
   passed: { label: 'Validé', cls: 'bg-emerald-100 text-emerald-700' },
-  failed: { label: 'Échoué', cls: 'bg-red-100 text-red-700' },
+  failed: { label: 'Refusé', cls: 'bg-red-100 text-red-700' },
   dropped: { label: 'Abandonné', cls: 'bg-amber-100 text-amber-700' },
 }
 
@@ -332,7 +333,7 @@ export default function StaffDashboard() {
                           </div>
                           <div className="text-right">
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>
-                              {st.label}
+                              {enr.status_display || st.label}
                             </span>
                             <div className="text-xs font-bold text-gray-800 mt-1">
                               {enr.grade != null ? `${enr.grade}/20` : '—'}
