@@ -16,13 +16,15 @@ import { useAuth } from '../../contexts/AuthContext'
 const STATUS_OPTIONS = [
   { value: 'enrolled', label: 'Inscrit' },
   { value: 'in_progress', label: 'En cours' },
+  { value: 'completed', label: 'Terminé' },
   { value: 'passed', label: 'Validé / Réussi' },
-  { value: 'failed', label: 'Échoué / Ajourné' },
+  { value: 'failed', label: 'Refusé' },
 ]
 
 const STATUS_BADGE = {
   enrolled: 'bg-gray-100 text-gray-700',
   in_progress: 'bg-blue-100 text-blue-700',
+  completed: 'bg-teal-100 text-teal-800',
   passed: 'bg-emerald-100 text-emerald-700',
   failed: 'bg-red-100 text-red-700',
   dropped: 'bg-amber-100 text-amber-700',
@@ -214,7 +216,7 @@ export default function CourseDetailPage() {
       }
       await gradeMember(id, memberUserId, payload)
       setEditing(null)
-      setMessage({ type: 'success', text: 'Note mise à jour' })
+      setMessage({ type: 'success', text: 'Statut et note mis à jour.' })
       await load()
     } catch (err) {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur de notation' })
@@ -306,7 +308,7 @@ export default function CourseDetailPage() {
             ) : course.is_member ? (
               <div className="flex flex-wrap items-center gap-3">
                 <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700">
-                  Vous êtes inscrit · {course.my_status === 'passed' ? 'Validé' : course.my_status === 'failed' ? 'Échoué' : course.my_status === 'in_progress' ? 'En cours' : 'Inscrit'}
+                  Vous êtes inscrit · {course.my_status === 'completed' ? 'Terminé' : course.my_status === 'passed' ? 'Validé' : course.my_status === 'failed' ? 'Refusé' : course.my_status === 'in_progress' ? 'En cours' : 'Inscrit'}
                 </span>
                 {course.my_role === 'member' && (
                   <button
@@ -510,7 +512,7 @@ export default function CourseDetailPage() {
                           </select>
                         ) : (
                           <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[m.status] || STATUS_BADGE.enrolled}`}>
-                            {m.status_display || (m.status === 'dropped' ? 'Abandonné' : m.status)}
+                            {m.status_display || (m.status === 'completed' ? 'Terminé' : m.status === 'failed' ? 'Refusé' : m.status === 'dropped' ? 'Abandonné' : m.status)}
                           </span>
                         )}
                       </td>
