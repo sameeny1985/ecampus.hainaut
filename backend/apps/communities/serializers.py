@@ -44,9 +44,9 @@ class MembershipSerializer(serializers.ModelSerializer):
             'id', 'user', 'user_detail', 'community', 'community_name',
             'major_name', 'year', 'role', 'status', 'status_display',
             'grade', 'grade_comment', 'graded_by', 'graded_by_name',
-            'graded_at', 'joined_at', 'is_active'
+            'graded_at', 'completed_at', 'joined_at', 'is_active'
         ]
-        read_only_fields = ['id', 'joined_at', 'graded_by', 'graded_at']
+        read_only_fields = ['id', 'joined_at', 'graded_by', 'graded_at', 'completed_at']
 
 
 class CommunityListSerializer(serializers.ModelSerializer):
@@ -238,10 +238,16 @@ class GradeUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
-        instance.status = validated_data.get('status', instance.status)
+        now = timezone.now()
+        new_status = validated_data.get('status', instance.status)
+        instance.status = new_status
         instance.grade = validated_data.get('grade', instance.grade)
         instance.grade_comment = validated_data.get('grade_comment', instance.grade_comment)
+        if new_status in (Membership.EnrollmentStatus.COMPLETED, Membership.EnrollmentStatus.PASSED):
+            instance.completed_at = instance.completed_at or now
+        elif new_status == Membership.EnrollmentStatus.FAILED:
+            instance.completed_at = now
         instance.graded_by = self.context['request'].user
-        instance.graded_at = timezone.now()
+        instance.graded_at = now
         instance.save()
         return instance
