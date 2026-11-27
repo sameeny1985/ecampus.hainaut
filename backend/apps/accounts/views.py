@@ -1,6 +1,10 @@
 """
 Views for accounts - authentication, profile, privacy, blocking.
 """
+import os
+import json
+import urllib.request
+import urllib.error
 from rest_framework import generics, status, permissions, views
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -18,6 +22,87 @@ from .serializers import (
     ProfileUpdateSerializer, CookieConsentSerializer, BlockedUserSerializer
 )
 from .permissions import IsOwnerOrAdmin
+
+
+def _send_email_via_brevo(to_email, subject, message, from_email=None):
+    api_key = (os.getenv('BREVO_API_KEY') or '').strip()
+    if not api_key:
+        return False, 'BREVO_API_KEY تنظیم نشده است.'
+
+    sender_email = (
+        os.getenv('BREVO_SENDER_EMAIL')
+        or from_email
+        or getattr(settings, 'DEFAULT_FROM_EMAIL', '')
+        or os.getenv('EMAIL_HOST_USER', '')
+        or 'noreply@hainaut-ea.be'
+    ).strip()
+    sender_name = (os.getenv('BREVO_SENDER_NAME') or 'CampusConnect').strip()
+
+    payload = {
+        'sender': {
+            'name': sender_name,
+            'email': sender_email,
+        },
+        'to': [
+            {
+                'email': to_email,
+            }
+        ],
+        'subject': subject,
+        'textContent': message,
+    }
+
+    req = urllib.request.Request(
+        'https://api.brevo.com/v3/smtp/email',
+        data=json.dumps(payload).encode('utf-8'),
+        headers={
+            'accept': 'application/json',
+            'api-key': api_key,
+            'content-type': 'application/json',
+        },
+        method='POST',
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            if 200 <= resp.status < 300:
+                return True, ''
+            return False, f'Brevo HTTP {resp.status}'
+    except urllib.error.HTTPError as exc:
+        body = ''
+        try:
+            body = exc.read().decode('utf-8', errors='replace')
+        except Exception:
+            pass
+        return False, f'Brevo HTTP {exc.code}: {body or exc.reason}'
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _deliver_registration_email(to_email, subject, message):
+    default_from = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hainaut-ea.be')
+    brevo_api_key = (os.getenv('BREVO_API_KEY') or '').strip()
+
+    if brevo_api_key:
+        ok, err = _send_email_via_brevo(
+            to_email=to_email,
+            subject=subject,
+            message=message,
+            from_email=default_from,
+        )
+        return (1 if ok else 0), err
+
+    try:
+        sent = send_mail(
+            subject=subject,
+            message=message,
+            from_email=default_from,
+            recipient_list=[to_email],
+            fail_silently=False,
+        )
+        return sent, ''
+    except Exception as exc:
+        return 0, str(exc)
 
 
 def _notify_moderators_and_admins(title, message, link='/dashboard'):
@@ -421,12 +506,10 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
             sent_count = 0
             email_error = ''
             try:
-                sent_count = send_mail(
+                sent_count, email_error = _deliver_registration_email(
+                    to_email=req_obj.personal_email,
                     subject='CampusConnect — Inscription approuvée',
                     message=email_body,
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hainaut-ea.be'),
-                    recipient_list=[req_obj.personal_email],
-                    fail_silently=False,
                 )
             except Exception as exc:
                 email_error = str(exc)
@@ -436,7 +519,7 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
             else:
                 msg = (
                     f"Inscription approuvée, mais l'e-mail n'a pas pu être envoyé à {req_obj.personal_email} "
-                    f"(vérifiez EMAIL_HOST / EMAIL_HOST_USER / EMAIL_HOST_PASSWORD sur Render : {email_error or 'SMTP non configuré'})."
+                    f"(vérifiez BREVO_API_KEY / BREVO_SENDER_EMAIL یا EMAIL_HOST sur Render : {email_error or 'SMTP non configuré'})."
                 )
 
             return Response({
@@ -453,16 +536,14 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
         sent_count = 0
         email_error = ''
         try:
-            sent_count = send_mail(
+            sent_count, email_error = _deliver_registration_email(
+                to_email=req_obj.personal_email,
                 subject='CampusConnect — Statut de votre demande d\'inscription',
                 message=(
                     f"Bonjour {req_obj.first_name} {req_obj.last_name},\n\n"
                     f"Statut de votre inscription : REFUSÉE.\n"
                     f"Motif / Note : {req_obj.moderator_note}\n"
                 ),
-                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hainaut-ea.be'),
-                recipient_list=[req_obj.personal_email],
-                fail_silently=False,
             )
         except Exception as exc:
             email_error = str(exc)
@@ -472,7 +553,7 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
         else:
             msg = (
                 f"Demande refusée, mais l'e-mail n'a pas pu être envoyé à {req_obj.personal_email} "
-                f"(vérifiez EMAIL_HOST / EMAIL_HOST_USER / EMAIL_HOST_PASSWORD sur Render : {email_error or 'SMTP non configuré'})."
+                f"(vérifiez BREVO_API_KEY / BREVO_SENDER_EMAIL یا EMAIL_HOST sur Render : {email_error or 'SMTP non configuré'})."
             )
 
         return Response({
