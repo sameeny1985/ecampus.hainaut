@@ -99,8 +99,9 @@ class Membership(models.Model):
     class EnrollmentStatus(models.TextChoices):
         ENROLLED = 'enrolled', 'Inscrit'
         IN_PROGRESS = 'in_progress', 'En cours'
+        COMPLETED = 'completed', 'Terminé'
         PASSED = 'passed', 'Validé / Réussi'
-        FAILED = 'failed', 'Échoué / Ajourné'
+        FAILED = 'failed', 'Refusé'
         DROPPED = 'dropped', 'Abandonné'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -144,6 +145,7 @@ class Membership(models.Model):
         related_name='grades_given'
     )
     graded_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
 
     joined_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
