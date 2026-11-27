@@ -6,8 +6,9 @@ import { getMyEnrollments } from '../../services/communityService'
 const STATUS_BADGE = {
   enrolled: { label: 'Inscrit', cls: 'bg-gray-100 text-gray-700' },
   in_progress: { label: 'En cours', cls: 'bg-blue-100 text-blue-700' },
+  completed: { label: 'Terminé', cls: 'bg-teal-100 text-teal-800' },
   passed: { label: 'Validé / Réussi', cls: 'bg-emerald-100 text-emerald-700' },
-  failed: { label: 'Échoué / Ajourné', cls: 'bg-red-100 text-red-700' },
+  failed: { label: 'Refusé', cls: 'bg-red-100 text-red-700' },
   dropped: { label: 'Abandonné', cls: 'bg-amber-100 text-amber-700' },
 }
 
@@ -32,7 +33,7 @@ export default function StudentDashboard() {
     load()
   }, [])
 
-  const passedCount = enrollments.filter(e => e.status === 'passed').length
+  const passedCount = enrollments.filter(e => e.status === 'passed' || e.status === 'completed').length
   const gradedList = enrollments.filter(e => e.grade != null)
   const averageGrade = gradedList.length > 0
     ? (gradedList.reduce((sum, e) => sum + parseFloat(e.grade), 0) / gradedList.length).toFixed(2)
@@ -76,7 +77,7 @@ export default function StudentDashboard() {
           <div className="text-3xl font-bold text-indigo-600 mt-1">{enrollments.length}</div>
         </div>
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-          <div className="text-sm text-gray-500">Cours validés</div>
+          <div className="text-sm text-gray-500">Cours validés / terminés</div>
           <div className="text-3xl font-bold text-emerald-600 mt-1">{passedCount}</div>
         </div>
         <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
@@ -136,7 +137,7 @@ export default function StudentDashboard() {
 
                   <div className="flex items-center gap-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${st.cls}`}>
-                      {st.label}
+                      {item.status_display || st.label}
                     </span>
                     <div className="text-sm font-bold text-gray-900 min-w-[60px] text-right">
                       {item.grade != null ? `${item.grade}/20` : '—'}
