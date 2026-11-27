@@ -12,7 +12,6 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from django.contrib.auth import authenticate, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.db.models import Q
@@ -81,28 +80,13 @@ def _send_email_via_brevo(to_email, subject, message, from_email=None):
 
 def _deliver_registration_email(to_email, subject, message):
     default_from = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hainaut-ea.be')
-    brevo_api_key = (os.getenv('BREVO_API_KEY') or '').strip()
-
-    if brevo_api_key:
-        ok, err = _send_email_via_brevo(
-            to_email=to_email,
-            subject=subject,
-            message=message,
-            from_email=default_from,
-        )
-        return (1 if ok else 0), err
-
-    try:
-        sent = send_mail(
-            subject=subject,
-            message=message,
-            from_email=default_from,
-            recipient_list=[to_email],
-            fail_silently=False,
-        )
-        return sent, ''
-    except Exception as exc:
-        return 0, str(exc)
+    ok, err = _send_email_via_brevo(
+        to_email=to_email,
+        subject=subject,
+        message=message,
+        from_email=default_from,
+    )
+    return (1 if ok else 0), err
 
 
 def _notify_moderators_and_admins(title, message, link='/dashboard'):
@@ -304,6 +288,8 @@ class UpperYearRegistrationView(views.APIView):
                 f"a été envoyée au modérateur. Vous pourrez vous inscrire aux cours après validation."
             )
         }, status=status.HTTP_201_CREATED)
+
+
 class FirstYearRegistrationRequestView(views.APIView):
     """ثبت درخواست ثبت‌نام دانشجوی سال اول با ایمیل شخصی/گوگل"""
     permission_classes = [permissions.AllowAny]
@@ -393,6 +379,7 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
 
         if action not in ('approve', 'reject'):
             return Response({'error': 'Action invalide (approve ou reject).'}, status=status.HTTP_400_BAD_REQUEST)
+
         if action == 'approve':
             is_upper_year = req_obj.academic_year in ('2eme', '3eme')
 
@@ -519,7 +506,7 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
             else:
                 msg = (
                     f"Inscription approuvée, mais l'e-mail n'a pas pu être envoyé à {req_obj.personal_email} "
-                    f"(vérifiez BREVO_API_KEY / BREVO_SENDER_EMAIL یا EMAIL_HOST sur Render : {email_error or 'SMTP non configuré'})."
+                    f"(vérifiez BREVO_API_KEY / BREVO_SENDER_EMAIL sur Render : {email_error or 'Brevo non configuré'})."
                 )
 
             return Response({
@@ -527,6 +514,7 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
                 'email_sent': sent_count > 0,
                 'status': req_obj.status,
             })
+
         req_obj.status = RegistrationRequest.Status.REJECTED
         req_obj.moderator_note = note or 'Demande refusée.'
         req_obj.reviewed_by = request.user
@@ -553,7 +541,7 @@ class ModeratorRegistrationRequestDecisionView(views.APIView):
         else:
             msg = (
                 f"Demande refusée, mais l'e-mail n'a pas pu être envoyé à {req_obj.personal_email} "
-                f"(vérifiez BREVO_API_KEY / BREVO_SENDER_EMAIL یا EMAIL_HOST sur Render : {email_error or 'SMTP non configuré'})."
+                f"(vérifiez BREVO_API_KEY / BREVO_SENDER_EMAIL sur Render : {email_error or 'Brevo non configuré'})."
             )
 
         return Response({
