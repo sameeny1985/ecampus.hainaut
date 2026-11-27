@@ -281,7 +281,7 @@ class GradeMemberView(views.APIView):
     """
     استاد همان درس یا کارمند وضعیت و نمره دانشجو را تنظیم می‌کند
     POST /api/communities/<id>/members/<user_id>/grade/
-    body: { "status": "passed"|"failed"|"in_progress"|"enrolled", "grade": 14.5, "grade_comment": "..." }
+    body: { "status": "completed"|"failed"|"passed"|"in_progress"|"enrolled", "grade": 14.5, "grade_comment": "..." }
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -307,15 +307,18 @@ class GradeMemberView(views.APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
+        status_labels = {
+            'completed': 'Terminé',
+            'failed': 'Refusé',
+            'passed': 'Validé / Réussi',
+            'in_progress': 'En cours',
+            'enrolled': 'Inscrit',
+        }
+        status_text = status_labels.get(membership.status, membership.get_status_display())
+        grade_part = f" — Note : {membership.grade}/20" if membership.grade is not None else ""
+        student_name = f"{membership.user.first_name} {membership.user.last_name}".strip() or membership.user.email
+
         if membership.user != request.user:
-            status_labels = {
-                'passed': 'Réussi',
-                'failed': 'Échoué',
-                'in_progress': 'En cours',
-                'enrolled': 'Inscrit',
-            }
-            status_text = status_labels.get(membership.status, membership.status)
-            grade_part = f" — Note : {membership.grade}/20" if membership.grade is not None else ""
             Notification.objects.create(
                 recipient=membership.user,
                 sender=request.user,
@@ -323,6 +326,20 @@ class GradeMemberView(views.APIView):
                 message=f"Statut : {status_text}{grade_part}",
                 link="/dashboard"
             )
+
+        if membership.status in (Membership.EnrollmentStatus.COMPLETED, Membership.EnrollmentStatus.FAILED):
+            staff_recipients = User.objects.filter(
+                role__in=['moderator', 'admin'],
+                is_active=True
+            ).exclude(id=request.user.id)
+            for staff in staff_recipients:
+                Notification.objects.create(
+                    recipient=staff,
+                    sender=request.user,
+                    title=f"Statut {status_text} : {community.name}",
+                    message=f"L'étudiant {student_name} a reçu le statut « {status_text} »{grade_part}.",
+                    link=f"/courses/{community.id}"
+                )
 
         return Response(MembershipSerializer(membership, context={'request': request}).data)
 
@@ -470,6 +487,8 @@ class DeleteCommunityView(views.APIView):
         community.is_active = False
         community.save(update_fields=['is_active'])
         return Response({'message': f'Le cours « {community.name} » a été supprimé.'}, status=status.HTTP_200_OK)
+
+
 class StudentListView(generics.ListAPIView):
     """لیست تمام دانشجویان فعال برای پنل کارمند و مدریتور"""
     permission_classes = [permissions.IsAuthenticated]
