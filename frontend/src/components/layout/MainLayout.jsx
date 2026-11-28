@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
 import api from '../../services/api'
@@ -16,6 +16,9 @@ export default function MainLayout({ children }) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifications, setNotifications] = useState([])
   const [showDropdown, setShowDropdown] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const menuRef = useRef(null)
 
   const fetchUnreadCount = () => {
     api.get('/notifications/unread-count/')
@@ -35,9 +38,32 @@ export default function MainLayout({ children }) {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false)
+      }
+    }
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false)
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('touchstart', handleOutside)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('touchstart', handleOutside)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [])
+
   const handleBellClick = () => {
     const nextState = !showDropdown
     setShowDropdown(nextState)
+    setMenuOpen(false)
     if (nextState) {
       fetchNotifications()
     }
@@ -50,6 +76,7 @@ export default function MainLayout({ children }) {
       setNotifications(notifications.map(n => n.id === notif.id ? { ...n, is_read: true } : n))
     }
     setShowDropdown(false)
+    setMenuOpen(false)
 
     let targetLink = notif.link || '/messages'
     const textSample = `${notif.title || ''} ${notif.message || ''} ${targetLink}`.toLowerCase()
@@ -74,57 +101,115 @@ export default function MainLayout({ children }) {
   }
 
   const handleLogout = () => {
+    setMenuOpen(false)
     navigate('/', { replace: true })
     logout()
   }
 
   const handleAdminLoginClick = () => {
+    setMenuOpen(false)
     window.open(ADMIN_LOGIN_URL, '_blank', 'noopener,noreferrer')
   }
 
+  const closeMenu = () => setMenuOpen(false)
+
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-clip bg-gray-50">
-      <header className="bg-white border-b w-full max-w-full relative">
+      <header className="bg-white border-b w-full max-w-full relative z-30">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2 min-w-0">
-          <div className="flex items-center gap-2.5 sm:gap-5 min-w-0 overflow-x-auto no-scrollbar">
-            <Link to="/dashboard" className="text-base sm:text-xl font-bold text-blue-600 shrink-0 whitespace-nowrap">
+          {/* سمت چپ: منوی کشویی سه‌خط + لوگو */}
+          <div className="relative flex items-center gap-2.5 sm:gap-4 min-w-0" ref={menuRef} dir="ltr">
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(prev => !prev)
+                setShowDropdown(false)
+              }}
+              aria-label="Menu"
+              aria-expanded={menuOpen}
+              className="w-9 h-9 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-800 flex items-center justify-center text-lg font-bold shrink-0 text-left"
+            >
+              {menuOpen ? '✕' : '☰'}
+            </button>
+
+            <Link
+              to="/dashboard"
+              onClick={closeMenu}
+              className="text-base sm:text-xl font-bold text-blue-600 shrink-0 whitespace-nowrap text-left"
+            >
               CampusConnect
             </Link>
-            <Link to="/messages" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
-              Email
-            </Link>
-            <Link to="/courses" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
-              Cours & Filières
-            </Link>
-            {canCreateCourse && (
-              <Link to="/courses/create" className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
-                Ajouter un cours
-              </Link>
-            )}
-            {canManageRequests && (
-              <>
-                <Link
-                  to="/registration-requests?tab=first"
-                  className="text-xs sm:text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap"
-                >
-                  Demandes (1re année)
-                </Link>
-                <Link
-                  to="/registration-requests?tab=upper"
-                  className="text-xs sm:text-sm font-medium text-indigo-700 hover:text-indigo-900 shrink-0 whitespace-nowrap"
-                >
-                  Demandes (2e/3e année)
-                </Link>
-              </>
-            )}
-            {isModerator && (
-              <button
-                type="button"
-                onClick={handleAdminLoginClick}
-                className="text-xs sm:text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap transition"
+
+            {menuOpen && (
+              <div
+                role="menu"
+                className="fixed left-3 right-3 top-16 sm:absolute sm:top-full sm:left-0 sm:right-auto mt-2 sm:w-64 bg-white rounded-xl shadow-lg border py-2 z-50 text-left max-h-[80vh] overflow-y-auto"
               >
-                Connexion Admin
-              </button>
+                <Link
+                  to="/dashboard"
+                  role="menuitem"
+                  onClick={closeMenu}
+                  className="block w-full text-left px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                >
+                  Home
+                </Link>
+                <Link
+                  to="/messages"
+                  role="menuitem"
+                  onClick={closeMenu}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600"
+                >
+                  Email
+                </Link>
+                <Link
+                  to="/courses"
+                  role="menuitem"
+                  onClick={closeMenu}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600"
+                >
+                  Cours & Filières
+                </Link>
+                {canCreateCourse && (
+                  <Link
+                    to="/courses/create"
+                    role="menuitem"
+                    onClick={closeMenu}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600"
+                  >
+                    Ajouter un cours
+                  </Link>
+                )}
+                {canManageRequests && (
+                  <>
+                    <Link
+                      to="/registration-requests?tab=first"
+                      role="menuitem"
+                      onClick={closeMenu}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600"
+                    >
+                      Demandes (1re année)
+                    </Link>
+                    <Link
+                      to="/registration-requests?tab=upper"
+                      role="menuitem"
+                      onClick={closeMenu}
+                      className="block w-full text-left px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+                    >
+                      Demandes (2e/3e année)
+                    </Link>
+                  </>
+                )}
+                {isModerator && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleAdminLoginClick}
+                    className="w-full text-left px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 mt-1"
+                  >
+                    Connexion Admin
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
