@@ -133,24 +133,24 @@ export default function MainLayout({ children }) {
               }}
               aria-label="Menu"
               aria-expanded={mobileMenuOpen}
-              className="md:hidden p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 shrink-0"
+              className="md:hidden p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 shrink-0 text-left"
             >
               {mobileMenuOpen ? '✕' : '☰'}
             </button>
 
-            <Link to="/dashboard" className="text-base sm:text-xl font-bold text-blue-600 shrink-0 whitespace-nowrap">
+            <Link to="/dashboard" className="text-base sm:text-xl font-bold text-blue-600 shrink-0 whitespace-nowrap text-left">
               CampusConnect
             </Link>
 
-            <nav className="hidden md:flex items-center gap-4">
-              <Link to="/messages" className="text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
+            <nav className="hidden md:flex items-center gap-4 text-left">
+              <Link to="/messages" className="text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap text-left">
                 Email
               </Link>
-              <Link to="/courses" className="text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
+              <Link to="/courses" className="text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap text-left">
                 Cours & Filières
               </Link>
               {canCreateCourse && (
-                <Link to="/courses/create" className="text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap">
+                <Link to="/courses/create" className="text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap text-left">
                   Ajouter un cours
                 </Link>
               )}
@@ -158,13 +158,13 @@ export default function MainLayout({ children }) {
                 <>
                   <Link
                     to="/registration-requests?tab=first"
-                    className="text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap"
+                    className="text-sm text-gray-600 hover:text-blue-600 shrink-0 whitespace-nowrap text-left"
                   >
                     Demandes (1re année)
                   </Link>
                   <Link
                     to="/registration-requests?tab=upper"
-                    className="text-sm font-medium text-indigo-700 hover:text-indigo-900 shrink-0 whitespace-nowrap"
+                    className="text-sm font-medium text-indigo-700 hover:text-indigo-900 shrink-0 whitespace-nowrap text-left"
                   >
                     Demandes (2e/3e année)
                   </Link>
@@ -174,7 +174,7 @@ export default function MainLayout({ children }) {
                 <button
                   type="button"
                   onClick={handleAdminLoginClick}
-                  className="text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap transition"
+                  className="text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap transition text-left"
                 >
                   Connexion Admin
                 </button>
@@ -184,7 +184,7 @@ export default function MainLayout({ children }) {
 
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             {isModeratorOrAdmin && (
-              <div className="relative shrink-0" ref={modMenuRef}>
+              <div className="relative shrink-0 text-left" dir="ltr" ref={modMenuRef}>
                 <button
                   type="button"
                   onClick={() => {
@@ -192,18 +192,18 @@ export default function MainLayout({ children }) {
                     setShowDropdown(false)
                   }}
                   aria-expanded={showModDropdown}
-                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold flex items-center gap-1 whitespace-nowrap transition"
+                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold flex items-center justify-start gap-1 whitespace-nowrap transition text-left"
                 >
-                  <span>Modération</span>
+                  <span className="text-left">Modération</span>
                   <span className="text-[10px]">{showModDropdown ? '▲' : '▼'}</span>
                 </button>
 
                 {showModDropdown && (
-                  <div className="fixed left-3 right-3 top-16 sm:absolute sm:top-full sm:left-auto sm:right-0 mt-2 sm:w-64 bg-white rounded-xl shadow-xl border py-1.5 z-50">
+                  <div className="fixed left-3 right-3 top-16 sm:absolute sm:top-full sm:left-0 sm:right-auto mt-2 sm:w-64 bg-white rounded-xl shadow-xl border py-1.5 z-50 text-left">
                     <Link
                       to="/dashboard"
                       onClick={() => setShowModDropdown(false)}
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
                     >
                       Tableau de bord
                     </Link>
@@ -211,7 +211,7 @@ export default function MainLayout({ children }) {
                       <Link
                         to="/courses/create"
                         onClick={() => setShowModDropdown(false)}
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
                       >
                         Ajouter un cours
                       </Link>
@@ -221,14 +221,14 @@ export default function MainLayout({ children }) {
                         <Link
                           to="/registration-requests?tab=first"
                           onClick={() => setShowModDropdown(false)}
-                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
                         >
                           Demandes (1re année)
                         </Link>
                         <Link
                           to="/registration-requests?tab=upper"
                           onClick={() => setShowModDropdown(false)}
-                          className="block px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+                          className="block w-full text-left px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
                         >
                           Demandes (2e/3e année)
                         </Link>
@@ -322,39 +322,39 @@ export default function MainLayout({ children }) {
 
         {/* منوی موبایل */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t px-4 py-3 space-y-2 shadow-md">
+          <div className="md:hidden bg-white border-t px-4 py-3 space-y-2 shadow-md text-left" dir="ltr">
             <Link
               to="/dashboard"
               onClick={() => setMobileMenuOpen(false)}
-              className="block py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
+              className="block w-full text-left py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
             >
               Tableau de bord
             </Link>
             <Link
               to="/messages"
               onClick={() => setMobileMenuOpen(false)}
-              className="block py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
+              className="block w-full text-left py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
             >
               Email
             </Link>
             <Link
               to="/courses"
               onClick={() => setMobileMenuOpen(false)}
-              className="block py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
+              className="block w-full text-left py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
             >
               Cours & Filières
             </Link>
 
             {isModeratorOrAdmin && (
-              <div className="pt-2 mt-2 border-t space-y-1">
-                <div className="px-3 py-1 text-xs font-bold text-indigo-700 uppercase">
+              <div className="pt-2 mt-2 border-t space-y-1 text-left">
+                <div className="px-3 py-1 text-xs font-bold text-indigo-700 uppercase text-left">
                   Menu Modération
                 </div>
                 {canCreateCourse && (
                   <Link
                     to="/courses/create"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                    className="block w-full text-left py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
                   >
                     Ajouter un cours
                   </Link>
@@ -364,14 +364,14 @@ export default function MainLayout({ children }) {
                     <Link
                       to="/registration-requests?tab=first"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="block py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                      className="block w-full text-left py-2 px-3 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
                     >
                       Demandes (1re année)
                     </Link>
                     <Link
                       to="/registration-requests?tab=upper"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="block py-2 px-3 rounded-lg text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+                      className="block w-full text-left py-2 px-3 rounded-lg text-sm font-medium text-indigo-700 hover:bg-indigo-50"
                     >
                       Demandes (2e/3e année)
                     </Link>
@@ -389,7 +389,7 @@ export default function MainLayout({ children }) {
               </div>
             )}
 
-            <div className="pt-2 mt-2 border-t">
+            <div className="pt-2 mt-2 border-t text-left">
               <button
                 type="button"
                 onClick={handleLogout}
