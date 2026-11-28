@@ -130,10 +130,11 @@ export default function MainLayout({ children }) {
               onClick={() => {
                 setMobileMenuOpen(prev => !prev)
                 setShowDropdown(false)
+                setShowModDropdown(false)
               }}
               aria-label="Menu"
               aria-expanded={mobileMenuOpen}
-              className="md:hidden p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 shrink-0 text-left"
+              className="p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 shrink-0 text-left text-base font-bold"
             >
               {mobileMenuOpen ? '✕' : '☰'}
             </button>
@@ -320,9 +321,9 @@ export default function MainLayout({ children }) {
           </div>
         </div>
 
-        {/* منوی موبایل */}
+        {/* منوی سه‌خط کشویی چپ‌چین */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t px-4 py-3 space-y-2 shadow-md text-left" dir="ltr">
+          <div className="bg-white border-t px-4 py-3 space-y-2 shadow-md text-left" dir="ltr">
             <Link
               to="/dashboard"
               onClick={() => setMobileMenuOpen(false)}
