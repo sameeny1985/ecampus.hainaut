@@ -30,8 +30,19 @@ export default function ProfileMenu() {
         setOpen(false)
       }
     }
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        setOpen(false)
+      }
+    }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
   }, [])
 
   if (!user) return null
@@ -120,7 +131,7 @@ export default function ProfileMenu() {
       </button>
 
       {open && (
-        <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 mt-2 sm:w-80 bg-white rounded-xl shadow-lg border z-40 p-4 text-left max-w-full">
+        <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 mt-2 sm:w-80 bg-white rounded-xl shadow-lg border z-50 p-4 text-left max-w-full">
           {/* اطلاعات هویتی و نقش کاربر */}
           <div className="pb-3 border-b space-y-1 min-w-0">
             <div className="text-sm font-bold text-gray-900 break-words">{fullName}</div>
